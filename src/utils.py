@@ -111,3 +111,7 @@ def find_closest_string(target: str, string_list: list) -> str:
 def save_str_as_markdown(marker_markdown_file_path, file_content) -> None:
     with open(marker_markdown_file_path, 'w') as markdown_file:
         markdown_file.write(file_content)
+
+def save_str_as_txt_file(txt_file_path, str_content) -> None:
+    with open(txt_file_path, 'w') as txt_file:
+        txt_file.write(str_content)
