@@ -104,3 +104,31 @@ Follow below instructions:
 Here is the content of a markdown file: 
 {markdown_file_content}
 """
+
+gpt_4_prompt = """
+Human: You will be given content of a markdown file for which you should extract all tables. 
+Otherwise, please extract the tables as JSON file in which keys are table_names and corresponding values are strings in form of .csv file containing content of extracted tables.
+Please find an example of a correct output structure below:
+<correct_structured_output>
+{{
+  "table_1": "A,B,C\n1,2,3\n4,5,6"
+}}
+</correct_structured_output> 
+
+Follow below instructions: 
+<instructions>
+1. DO NOT describe the tables, just extract it from the given markdown file!
+2. DO NOT return table in "column_name": "list_of_vales" format!
+3. Make sure that you structure the response in desired format
+4. Please include ONLY the extracted tables in the output!
+5. If you cannot find any tables in the provided markdown files content, please output empty string without any explanation.
+6. You MUST extract all tables!
+</instructions>
+
+Here is the content of a markdown file: 
+</markdown_file_content>
+{markdown_file_content}
+</markdown_file_content>
+
+Assistant:
+"""
