@@ -9,3 +9,4 @@ papers/
 lama_parse_notebook.ipynb
 llm_parsed_tables/
 .env
+manual_created_markdwons_for_prompt_design

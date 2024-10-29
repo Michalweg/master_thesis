@@ -1,5 +1,5 @@
 import os
-from src.parser import (extract_pdf_sections_content, parse_pdf_with_tabula, parse_pdf_with_llama_parse)
+from src.parser import (extract_pdf_sections_content, parse_pdf_with_tabula, parse_pdf_with_llama_parse, parse_pdf_with_pdf_plumber, parse_pdf_with_py_pdf2)
 from pathlib import Path
 
 from tqdm import tqdm
@@ -16,7 +16,7 @@ set_env()
 if __name__ == '__main__':
 
     papers_dir = 'papers/research_papers'
-    experiment_dir = 'parsing_experiments/13_10_2024'
+    experiment_dir = 'parsing_experiments/20_10_2024'
     papers_dir_list = list(Path(papers_dir).iterdir())
 
     for paper_path in (pbar:=tqdm(papers_dir_list)):
