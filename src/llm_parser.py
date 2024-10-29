@@ -13,7 +13,7 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from src.parser_prompts import (PARSER_PROMPT_TEMPLATE,
                             phi3_medium_prompt_template_specific_csv)
 from src.logger import logger
-from src.utils import read_markdown_file_content, save_dict_to_json, save_str_as_markdown
+from src.utils import read_markdown_file_content, save_dict_to_json, save_str_as_markdown, save_str_as_txt_file
 from datetime import datetime
 from tqdm import tqdm
 
@@ -41,44 +41,50 @@ def parse_markdown_with_mistral(markdown_file_path: str | Path, output_dir: str 
         }
     r = requests.post(url, json=payload)
 
+    # Parsing and saving LLM response
     r = json.loads(r.content)['response']
+
     if r:
         correct_output_format = 0
         try:
             parsed = output_parser.parse(r)
-            current_datetime = datetime.now()
-
-            # Format the datetime to display only up to the minute
-            formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M")
-            os.makedirs(os.path.join(str(output_dir), Path(markdown_file_path).stem), exist_ok=True)
-            save_dict_to_json(parsed, os.path.join(str(output_dir), Path(markdown_file_path).stem, f"{formatted_datetime}" + '.json'))
+            # current_datetime = datetime.now()
+            #
+            # # Format the datetime to display only up-to-the-minute
+            # formatted_datetime = current_datetime.strftime("%Y-%m-%d %H:%M")
+            # os.makedirs(os.path.join(str(output_dir), Path(markdown_file_path).stem), exist_ok=True)
+            save_dict_to_json(parsed, os.path.join(str(output_dir), Path(markdown_file_path).stem + f"len_{len(file_content)}" + '.json'))
         except Exception as e:
             logger.warning(f"Saving extracted response failed due to an error: {e}")
-        try:
-            parsed = output_parser.parse(r)
-            print(parsed)
-            for table_id in parsed:
-                try:
-                    df = pd.read_csv(StringIO(parsed[table_id]), sep=',')
-                    print(df)
-                    correct_output_format += 1
-                except Exception as e:
-                    print(f"There is an error with parsing output {e}")
-        except Exception as e:
-            pass
+            save_str_as_txt_file(txt_file_path=os.path.join(str(output_dir), Path(markdown_file_path).stem + f"len_{len(file_content)}" + '.txt'), str_content=r)
+
+
+        # try:
+        #     parsed = output_parser.parse(r)
+        #     for table_id in parsed:
+        #         try:
+        #             df = pd.read_csv(StringIO(parsed[table_id]), sep=',')
+        #             correct_output_format += 1
+        #         except Exception as e:
+        #             print(f"There is an error with parsing output {e}")
+        # except Exception as e:
+        #     pass
     else:
-        logger.info(f"In the provided markdown file there was no tables")
+        logger.info(f"The model didn't generate any response")
+        save_str_as_txt_file(txt_file_path=os.path.join(str(output_dir), Path(markdown_file_path).stem + f"len_{len(file_content)}" + '.txt'), str_content=r)
     logger.info(f"Parsing Markdown with {model_name} done")
 
 def parse_markdown_sections(sections_dict: dict, output_dir: str | Path, model_name: str):
     for section in sections_dict.keys():
         section_content = sections_dict[section]
-        save_str_as_markdown("temp_markdown.md", section_content)
-        parse_markdown_with_mistral("temp_markdown.md", output_dir, model_name=model_name)
+        save_str_as_markdown(f"{section}.md", section_content)
+        parse_markdown_with_mistral(f"{section}.md", output_dir, model_name=model_name)
+        os.remove(f"{section}.md")
 
 if __name__ == '__main__':
+
     model_name = 'phi3:medium'
-    markdown_file_path = "../table_1.md"
+    markdown_file_path = "../manual_created_markdwons_for_prompt_design/table_1.md"
     llm_parsed_tables_dir = Path("../llm_parsed_tables")
 
     for markdown_file in [f"../table_{i}.md" for i in range(1,4)]:
