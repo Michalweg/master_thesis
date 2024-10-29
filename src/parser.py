@@ -10,31 +10,53 @@ from PyPDF2 import PdfReader
 
 from src.logger import logger
 from src.utils import (find_closest_string, read_markdown_file_content,
-                       run_bash_command, save_str_as_markdown)
-
+                       run_bash_command, save_str_as_markdown, create_dir_if_not_exists)
+from tqdm import tqdm
 
 def parse_pdf_with_tabula(pdf_file_path: str | Path) -> list[pd.DataFrame]:
     logger.info(f"Extracting tables from PDF: {pdf_file_path} with Tabula")
-    dfs = tabula.read_pdf(pdf_file_path, pages="all", stream=True)
+    dfs = []
+    reader = PdfReader(pdf_file_path)
+    no_pages = len(reader.pages)
+    for page in range(no_pages):
+        try:
+            # Try using lattice mode
+            print(f"Attempting to extract tables with lattice=True ")
+            tables = tabula.read_pdf(pdf_file_path, pages=page, lattice=True)
+            if tables:
+                print("Tables extracted successfully using lattice=True.")
+                dfs += tables
+        except Exception as e:
+            print(f"Error with lattice=True on page {page}: {e}")
+            print("Attempting to extract tables with stream=True...")
+
+            # Try using stream mode if lattice fails
+            try:
+                tables = tabula.read_pdf(pdf_file_path, pages=page, stream=True)
+                print("Tables extracted successfully using stream=True.")
+                dfs += tables
+            except Exception as e:
+                print(f"Error with stream=True on page {page}: {e}")
+                continue
     logger.info(f"Extracting tables from PDF: {pdf_file_path} completed")
     return dfs
 
 
-# TODO check what this plumber does
 def parse_pdf_with_pdf_plumber(pdf_file_path: str | Path):
     with pdfplumber.open(pdf_file_path) as pdf:
-        first_page = pdf.pages[0]
-        print(first_page.chars[0])
+        for page in pdf.pages:
+            print(page.extract_tables())
+            text = page.extract_text()
+            print(text)
 
 
 def parse_pdf_with_py_pdf2(pdf_file_path: str | Path) -> dict[int, str]:
     reader = PdfReader(pdf_file_path)
     documents_text: dict = {}
-    i = 1
-    for page in reader.pages:
-        page_text = page.extract_text()
-        documents_text.update({str(i): page_text})
-        i += 1
+
+    for i in range(len(reader.pages)):
+        page = reader.pages[i]
+        documents_text.update({str(i): page.extract_text()})
     return documents_text
 
 
@@ -75,7 +97,10 @@ def extract_pdf_sections_with_markdown(marker_markdown_file_path: str) -> list[s
 def extract_pdf_sections_with_marker_metadata(marker_metadata_file: str) -> list[str]:
     with open(marker_metadata_file) as metadata_file:
         files_content = json.load(metadata_file)
-    toc_component = files_content["toc"]
+    if "toc" in files_content:
+        toc_component = files_content["toc"]
+    else:
+        toc_component = files_content["pdf_toc"]
     sections = [section["title"] for section in toc_component]
     return sections
 
@@ -131,3 +156,18 @@ def parse_pdf_with_llama_parse(pdf_file_path: str | Path, markdown_file_path: st
     logger.info("Parsing PDF ... with Lama Parse done")
     return all_file_content
 
+
+if __name__ == "__main__":
+    papers_dir = 'papers/research_papers'
+    experiment_dir = 'parsing_experiments/29_10_2024_tabula_lattice_mode'
+    papers_dir_list = list(Path(papers_dir).iterdir())
+    create_dir_if_not_exists(Path(experiment_dir))
+
+    for paper_path in (pbar := tqdm(papers_dir_list)):
+        pbar.set_description(f"Processing document: {paper_path.name}")
+        if paper_path.suffix == '.pdf':
+            dfs = parse_pdf_with_tabula(paper_path)
+            output_dir_path = Path(experiment_dir) / paper_path.name
+            create_dir_if_not_exists(output_dir_path)
+            for i, df in enumerate(dfs):
+                df.to_csv(output_dir_path / f"{paper_path.name}_{str(i)}.csv", index=False)
