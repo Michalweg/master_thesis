@@ -5,7 +5,6 @@ venv/
 .idea/
 *.pyc
 parsing_experiments/
-papers/
 lama_parse_notebook.ipynb
 llm_parsed_tables/
 .env
