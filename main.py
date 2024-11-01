@@ -16,7 +16,7 @@ set_env()
 if __name__ == '__main__':
 
     papers_dir = 'papers/research_papers'
-    experiment_dir = 'parsing_experiments/20_10_2024'
+    experiment_dir = 'parsing_experiments/1_11_2024'
     papers_dir_list = list(Path(papers_dir).iterdir())
 
     for paper_path in (pbar:=tqdm(papers_dir_list)):
