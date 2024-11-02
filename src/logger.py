@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from pathlib import Path
+import os 
 
 ADD_FILE_HANDLER = True
 
@@ -34,6 +35,8 @@ def setup_logger(add_file_handler = False):
     # Generate a filename with the current date and time (precision to minutes)
     log_filename = datetime.now().strftime('%d_%m_%Y_%H-%M.log')
     log_filename = Path("logs" + f"/{log_filename}")
+   
+    os.makedirs(os.path.dirname(log_filename), exist_ok=True)
     # Create a logger
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)  # Set logging level
@@ -50,6 +53,12 @@ def setup_logger(add_file_handler = False):
     # Add handlers to the logger
     logger.addHandler(console_handler)
     if add_file_handler:
+        logging.basicConfig(
+            filename=str(log_filename),
+            filemode='a',  # Use 'w' to overwrite each time, 'a' to append
+            format=formatter.format,
+            level=logging.DEBUG  # Set log level to DEBUG to capture all messages
+        )
         file_handler = logging.FileHandler(log_filename,
                                            encoding='utf-8')  # File handler (logs to file with custom filename)
         file_handler.setFormatter(formatter)
