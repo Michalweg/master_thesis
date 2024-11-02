@@ -115,3 +115,7 @@ def save_str_as_markdown(marker_markdown_file_path, file_content) -> None:
 def save_str_as_txt_file(txt_file_path, str_content) -> None:
     with open(txt_file_path, 'w') as txt_file:
         txt_file.write(str_content)
+
+def read_json(json_file_path: Path) -> dict:
+    with open(json_file_path, 'r') as json_file:
+        return json.load(json_file)
