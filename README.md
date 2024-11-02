@@ -1,5 +1,8 @@
 # Autonomous Leaderboard generation 
 
+## Setting up venv
+1. Create a virtual env 
+2. Run pip -r requirements.txt command 
 
 ## Papers parsing
 To parse papers please follow next steps: 
