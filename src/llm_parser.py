@@ -1,19 +1,15 @@
 import json
 import os
-import random
-from io import StringIO
 from pathlib import Path
 
-import pandas as pd
 import requests
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.pydantic_v1 import BaseModel, Field
 
-from src.parser_prompts import (PARSER_PROMPT_TEMPLATE,
-                            phi3_medium_prompt_template_specific_csv)
+from src.parser_prompts import gpt_4_prompt
 from src.logger import logger
-from src.utils import read_markdown_file_content, save_dict_to_json, save_str_as_markdown, save_str_as_txt_file
+from src.utils import read_markdown_file_content, save_dict_to_json, save_str_as_markdown, save_str_as_txt_file, create_dir_if_not_exists, read_json
 from datetime import datetime
 from tqdm import tqdm
 
@@ -28,7 +24,7 @@ def parse_markdown_with_mistral(markdown_file_path: str | Path, output_dir: str 
 
     output_parser = JsonOutputParser(pydantic_object=ModelResponse)
 
-    prompt = PromptTemplate(template=phi3_medium_prompt_template_specific_csv).format(markdown_file_content=file_content)
+    prompt = PromptTemplate(template=gpt_4_prompt).format(markdown_file_content=file_content)
                             # partial_variables={"format_instructions": output_parser.get_format_instructions()})
 
     # prompt = PARSER_PROMPT_TEMPLATE.replace("{markdown_file_content}", file_content)
@@ -83,11 +79,23 @@ def parse_markdown_sections(sections_dict: dict, output_dir: str | Path, model_n
 
 if __name__ == '__main__':
 
-    model_name = 'phi3:medium'
+    model_name = 'llama3.1'
     markdown_file_path = "../manual_created_markdwons_for_prompt_design/table_1.md"
-    llm_parsed_tables_dir = Path("../llm_parsed_tables")
+    llm_parsed_tables_dir = Path("../llm_parsed_tables/llama_3_1")
+    for paper_path in Path("../papers/research_papers").iterdir():
+        if paper_path.suffix == '.pdf':
+            paper_name_path = Path(f"../llm_parsed_tables/llama_3_1/{paper_path.stem}")
+            create_dir_if_not_exists(paper_name_path)
+            papers_section_text_path = os.path.join(f"../parsing_experiments/20_10_2024/{paper_path.stem}", "extracted_text_dict.json")
+            papers_section_text = read_json(Path(papers_section_text_path))
+            for section in papers_section_text:
+                markdown_section_file_path = save_str_as_markdown(f"{section}.md", papers_section_text[section])
+                parse_markdown_with_mistral(markdown_file_path=f"{section}.md",
+                                            output_dir=paper_name_path, model_name=model_name)
+                os.remove(f"{section}.md")
 
-    for markdown_file in [f"../table_{i}.md" for i in range(1,4)]:
-        for _ in tqdm(range(5)):
-            parse_markdown_with_mistral(markdown_file_path=markdown_file,
-                                        output_dir=llm_parsed_tables_dir, model_name=model_name)
+        else:
+            print(f"Broken file: {paper_path}")
+    # for markdown_file in [f"../manual_created_markdwons_for_prompt_design/table_{i}.md" for i in range(1,4)]:
+    #     parse_markdown_with_mistral(markdown_file_path=markdown_file,
+    #                                 output_dir=llm_parsed_tables_dir, model_name=model_name)
