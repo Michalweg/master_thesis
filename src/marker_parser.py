@@ -28,12 +28,14 @@ def split_pdf_files(folder_in: str, folder_out: str) -> None:
             for i in range(len(inputpdf.pages)):
                 output = PdfWriter()
                 output.add_page(inputpdf.pages[i])
-                with open(f'{folder_out}/{fname.split(".")[0].replace(" ", "-")}__{i}.pdf', "wb") as outputStream:
+                with open(
+                    f'{folder_out}/{fname.split(".")[0].replace(" ", "-")}__{i}.pdf',
+                    "wb",
+                ) as outputStream:
                     output.write(outputStream)
         except Exception as e:
             logger.error(e)
             print(fpath)
-
 
 
 def concat_markdown_files(dir_in: str, out_dir: str) -> None:
@@ -60,5 +62,7 @@ def parse_pdf_with_marker(pdf_file_path: str, output_dir: str) -> str:
         run_bash_command(f"marker_single {pdf_file_path} {output_dir}")
         logger.info("Running marker for this PDF completed")
 
-    markdown_file_path = os.path.join(output_dir, Path(pdf_file_path).stem, Path(pdf_file_path).stem + ".md")
+    markdown_file_path = os.path.join(
+        output_dir, Path(pdf_file_path).stem, Path(pdf_file_path).stem + ".md"
+    )
     return markdown_file_path

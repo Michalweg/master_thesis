@@ -8,5 +8,5 @@ parsing_experiments/
 lama_parse_notebook.ipynb
 llm_parsed_tables/
 .env
-manual_created_markdwons_for_prompt_design
+manual_created_markdowns_for_prompt_design
 papers/

@@ -7,11 +7,17 @@ import pdfplumber
 import tabula
 from llama_parse import LlamaParse
 from PyPDF2 import PdfReader
+from tqdm import tqdm
 
 from src.logger import logger
-from src.utils import (find_closest_string, read_markdown_file_content,
-                       run_bash_command, save_str_as_markdown, create_dir_if_not_exists)
-from tqdm import tqdm
+from src.utils import (
+    create_dir_if_not_exists,
+    find_closest_string,
+    read_markdown_file_content,
+    run_bash_command,
+    save_str_as_markdown,
+)
+
 
 def parse_pdf_with_tabula(pdf_file_path: str | Path) -> list[pd.DataFrame]:
     logger.info(f"Extracting tables from PDF: {pdf_file_path} with Tabula")
@@ -21,22 +27,22 @@ def parse_pdf_with_tabula(pdf_file_path: str | Path) -> list[pd.DataFrame]:
     for page in range(no_pages):
         try:
             # Try using lattice mode
-            print(f"Attempting to extract tables with lattice=True ")
+            # print(f"Attempting to extract tables with lattice=True ")
             tables = tabula.read_pdf(pdf_file_path, pages=page, lattice=True)
             if tables:
-                print("Tables extracted successfully using lattice=True.")
+                # print("Tables extracted successfully using lattice=True.")
                 dfs += tables
         except Exception as e:
-            print(f"Error with lattice=True on page {page}: {e}")
-            print("Attempting to extract tables with stream=True...")
+            # print(f"Error with lattice=True on page {page}: {e}")
+            # print("Attempting to extract tables with stream=True...")
 
             # Try using stream mode if lattice fails
             try:
                 tables = tabula.read_pdf(pdf_file_path, pages=page, stream=True)
-                print("Tables extracted successfully using stream=True.")
+                # print("Tables extracted successfully using stream=True.")
                 dfs += tables
             except Exception as e:
-                print(f"Error with stream=True on page {page}: {e}")
+                # print(f"Error with stream=True on page {page}: {e}")
                 continue
     logger.info(f"Extracting tables from PDF: {pdf_file_path} completed")
     return dfs
@@ -148,7 +154,9 @@ def extract_pdf_sections_content(marker_markdown_file_path: str) -> dict[str, st
     return pdf_section_contents
 
 
-def parse_pdf_with_llama_parse(pdf_file_path: str | Path, markdown_file_path: str | Path):
+def parse_pdf_with_llama_parse(
+    pdf_file_path: str | Path, markdown_file_path: str | Path
+):
     logger.info("Parsing PDF ... wih Lama Parse")
     documents = LlamaParse(result_type="markdown").load_data(pdf_file_path)
     all_file_content = "\n".join([doc.text for doc in documents])
@@ -158,16 +166,18 @@ def parse_pdf_with_llama_parse(pdf_file_path: str | Path, markdown_file_path: st
 
 
 if __name__ == "__main__":
-    papers_dir = 'papers/research_papers'
-    experiment_dir = 'parsing_experiments/29_10_2024_tabula_lattice_mode'
+    papers_dir = "papers/research_papers"
+    experiment_dir = "parsing_experiments/29_10_2024_tabula_lattice_mode"
     papers_dir_list = list(Path(papers_dir).iterdir())
     create_dir_if_not_exists(Path(experiment_dir))
 
     for paper_path in (pbar := tqdm(papers_dir_list)):
         pbar.set_description(f"Processing document: {paper_path.name}")
-        if paper_path.suffix == '.pdf':
+        if paper_path.suffix == ".pdf":
             dfs = parse_pdf_with_tabula(paper_path)
             output_dir_path = Path(experiment_dir) / paper_path.name
             create_dir_if_not_exists(output_dir_path)
             for i, df in enumerate(dfs):
-                df.to_csv(output_dir_path / f"{paper_path.name}_{str(i)}.csv", index=False)
+                df.to_csv(
+                    output_dir_path / f"{paper_path.name}_{str(i)}.csv", index=False
+                )

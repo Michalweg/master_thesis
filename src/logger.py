@@ -1,10 +1,9 @@
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
-import os 
 
 ADD_FILE_HANDLER = True
-
 
 
 class CustomFormatter(logging.Formatter):
@@ -14,14 +13,16 @@ class CustomFormatter(logging.Formatter):
     red = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
-    format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+    format = (
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
+    )
 
     FORMATS = {
         logging.DEBUG: grey + format + reset,
         logging.INFO: grey + format + reset,
         logging.WARNING: yellow + format + reset,
         logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset
+        logging.CRITICAL: bold_red + format + reset,
     }
 
     def format(self, record):
@@ -30,12 +31,11 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-
-def setup_logger(add_file_handler = False):
+def setup_logger(add_file_handler=False):
     # Generate a filename with the current date and time (precision to minutes)
-    log_filename = datetime.now().strftime('%d_%m_%Y_%H-%M.log')
-    log_filename = Path("logs" + f"/{log_filename}")
-   
+    log_filename = datetime.now().strftime("%d_%m_%Y_%H-%M.log")
+    log_filename = Path("../logs" + f"/{log_filename}")
+
     os.makedirs(os.path.dirname(log_filename), exist_ok=True)
     # Create a logger
     logger = logging.getLogger()
@@ -43,7 +43,6 @@ def setup_logger(add_file_handler = False):
 
     # Create handlers
     console_handler = logging.StreamHandler()  # Console handler (logs to console)
-
 
     # Create a formatter and set it for both handlers
     # formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
@@ -55,15 +54,17 @@ def setup_logger(add_file_handler = False):
     if add_file_handler:
         logging.basicConfig(
             filename=str(log_filename),
-            filemode='a',  # Use 'w' to overwrite each time, 'a' to append
+            filemode="a",  # Use 'w' to overwrite each time, 'a' to append
             format=formatter.format,
-            level=logging.DEBUG  # Set log level to DEBUG to capture all messages
+            level=logging.DEBUG,  # Set log level to DEBUG to capture all messages
         )
-        file_handler = logging.FileHandler(log_filename,
-                                           encoding='utf-8')  # File handler (logs to file with custom filename)
+        file_handler = logging.FileHandler(
+            log_filename, encoding="utf-8"
+        )  # File handler (logs to file with custom filename)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
     return logger
+
 
 logger = setup_logger(ADD_FILE_HANDLER)
