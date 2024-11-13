@@ -15,7 +15,7 @@ from src.utils import (
     extract_tables_from_markdown,
     save_data_to_json_file,
     saving_list_of_dfs,
-    set_env,
+    set_env, create_dir_if_not_exists,
 )
 
 set_env()
@@ -24,7 +24,8 @@ MODEL_NAME = "llama3.1"
 if __name__ == "__main__":
 
     papers_dir = "papers/research_papers"
-    experiment_dir = "parsing_experiments/3_11_2024_with_llama_parse_31_as_llm"
+    experiment_dir = f"parsing_experiments/11_11_2024_fixed_section_extraction_{MODEL_NAME}"
+    create_dir_if_not_exists(Path(experiment_dir))
     papers_dir_list = list(Path(papers_dir).iterdir())
 
     for paper_path in (pbar := tqdm(papers_dir_list)):

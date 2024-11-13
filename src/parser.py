@@ -86,6 +86,11 @@ def fix_sections_with_wrong_chars(
             )
             file_content = file_content.replace(section, correct_section)
             extracted_sections[i] = correct_section
+        elif section.startswith("# "):
+            correct_section = section[2:]
+            extracted_sections[i] = correct_section
+        elif section.startswith("#"):
+            extracted_sections[i] = section[1:]
     if no_of_changes > 0:
         save_str_as_markdown(marker_markdown_file_path, file_content)
     return extracted_sections
@@ -149,6 +154,8 @@ def extract_pdf_sections_content(marker_markdown_file_path: str) -> dict[str, st
                 )
             }
         )
+        if not section:
+            logger.warning(f"The provided section: {section} from the file: {marker_markdown_file_path} is empty!")
 
     logger.info("PDF sections extracted")
     return pdf_section_contents

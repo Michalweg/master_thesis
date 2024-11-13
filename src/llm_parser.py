@@ -2,7 +2,8 @@ import json
 import os
 from io import StringIO
 from pathlib import Path
-
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import pandas as pd
 import requests
 from langchain.prompts import PromptTemplate
@@ -22,6 +23,7 @@ from src.utils import (
 
 SUPPORTED_MODELS_PROMPTS = {
     "llama3.1": llama_31_7B_prompt,
+    "llama3.2": llama_31_7B_prompt,
     "gpt4": gpt_4_prompt
 }
 
@@ -40,32 +42,59 @@ def parse_markdown_with_llm(
 ):
     logger.info(f"Parsing Markdown with {model_name} ...")
     file_content = read_markdown_file_content(markdown_file_path)
+    if file_content:
+        output_parser = JsonOutputParser(pydantic_object=ModelResponse)
+        prompt_template = SUPPORTED_MODELS_PROMPTS[model_name]
 
-    output_parser = JsonOutputParser(pydantic_object=ModelResponse)
-    prompt_template = SUPPORTED_MODELS_PROMPTS[model_name]
+        prompt = PromptTemplate(template=prompt_template).format(
+            markdown_file_content=file_content
+        )
+        # partial_variables={"format_instructions": output_parser.get_format_instructions()})
 
-    prompt = PromptTemplate(template=prompt_template).format(
-        markdown_file_content=file_content
-    )
-    # partial_variables={"format_instructions": output_parser.get_format_instructions()})
+        # prompt = PARSER_PROMPT_TEMPLATE.replace("{markdown_file_content}", file_content)
+        payload = {
+            "model": model_name,
+            "prompt": prompt,
+            "stream": False,
+            "temperature": 0.0,
+        }
+        r = requests.post(url, json=payload)
 
-    # prompt = PARSER_PROMPT_TEMPLATE.replace("{markdown_file_content}", file_content)
-    payload = {
-        "model": model_name,
-        "prompt": prompt,
-        "stream": False,
-        "temperature": 0.0,
-    }
-    r = requests.post(url, json=payload)
+        # Parsing and saving LLM response
+        r = json.loads(r.content)["response"]
 
-    # Parsing and saving LLM response
-    r = json.loads(r.content)["response"]
-
-    if r:
-        try:
-            parsed = output_parser.parse(r)
-        except Exception as e:
-            logger.warning(f"Saving extracted response failed due to an error: {e}")
+        if r:
+            try:
+                parsed = output_parser.parse(r)
+            except Exception as e:
+                logger.warning(f"Saving extracted response failed due to an error: {e}")
+                save_str_as_txt_file(
+                    txt_file_path=os.path.join(
+                        str(output_dir),
+                        Path(markdown_file_path).stem + f"len_{len(file_content)}" + ".txt",
+                    ),
+                    str_content=r,
+                )
+            else:
+                parsed_response_file_path = os.path.join(
+                    str(output_dir),
+                    Path(markdown_file_path).stem
+                    + f"len_{len(file_content)}"
+                    + ".json",
+                )
+                save_dict_to_json(
+                    parsed,
+                    parsed_response_file_path
+                )
+                dfs = json_csv_to_dataframe_converter(parsed_response_file_path)
+                if dfs:
+                    for i, df in enumerate(dfs):
+                        df.to_csv(os.path.join(os.path.dirname(parsed_response_file_path), Path(parsed_response_file_path).stem + f"{str(i)}.csv"), index=False)
+                else:
+                    base_path, file_name = os.path.split(parsed_response_file_path)
+                    save_str_as_markdown(os.path.join(base_path, file_name.split(".")[0]+ "md"), "No table could be extracted from this: \n" + r)
+        else:
+            logger.info(f"The model didn't generate any response")
             save_str_as_txt_file(
                 txt_file_path=os.path.join(
                     str(output_dir),
@@ -73,33 +102,9 @@ def parse_markdown_with_llm(
                 ),
                 str_content=r,
             )
-        else:
-            parsed_response_file_path = os.path.join(
-                str(output_dir),
-                Path(markdown_file_path).stem
-                + f"len_{len(file_content)}"
-                + ".json",
-            )
-            save_dict_to_json(
-                parsed,
-                parsed_response_file_path
-            )
-            dfs = json_csv_to_dataframe_converter(parsed_response_file_path)
-            if dfs:
-                for i, df in enumerate(dfs):
-                    df.to_csv(os.path.join(os.path.dirname(parsed_response_file_path), Path(parsed_response_file_path).stem + f"{str(i)}.csv"), index=False)
-            else:
-                save_str_as_markdown(Path(parsed_response_file_path).stem + "md", "No table could be extracted from this: \n" + r)
+        logger.info(f"Parsing Markdown with {model_name} done")
     else:
-        logger.info(f"The model didn't generate any response")
-        save_str_as_txt_file(
-            txt_file_path=os.path.join(
-                str(output_dir),
-                Path(markdown_file_path).stem + f"len_{len(file_content)}" + ".txt",
-            ),
-            str_content=r,
-        )
-    logger.info(f"Parsing Markdown with {model_name} done")
+        logger.warning(f"There is no content in this markdown file: {markdown_file_path}")
 
 
 def parse_markdown_sections(
@@ -115,24 +120,24 @@ def parse_markdown_sections(
 def json_csv_to_dataframe_converter(json_file_path) -> list[pd.DataFrame]:
     all_dfs_in_json_file = read_json(json_file_path)
     dfs = []
-    for table_name in all_dfs_in_json_file:
-        if all_dfs_in_json_file[table_name]:
-            try:
-                df = pd.read_csv(StringIO(all_dfs_in_json_file[table_name]), sep=",")
-                dfs.append(df)
-            except Exception as e:
-                logger.warning(
-                    f"Reading dataframe from extracted response: {all_dfs_in_json_file[table_name]} failed due to an error: {e}"
-                )
-        else:
-            logger.info(f"Extracted section: {str(json_file_path).split('_')[0]} does not contain any table")
-
+    if all_dfs_in_json_file:
+        for table_name in all_dfs_in_json_file:
+            if all_dfs_in_json_file[table_name]:
+                try:
+                    df = pd.read_csv(StringIO(all_dfs_in_json_file[table_name]), sep=",")
+                    dfs.append(df)
+                except Exception as e:
+                    logger.warning(
+                        f"Reading dataframe from extracted response: {all_dfs_in_json_file[table_name]} failed due to an error: {e}"
+                    )
+            else:
+                logger.info(f"Extracted section: {str(json_file_path).split('_')[0]} does not contain any table")
     return dfs
 
 
 if __name__ == "__main__":
 
-    model_name = "llama3.1"
+    model_name = "llama3.2"
     markdown_file_path = "../manual_created_markdowns_for_prompt_design/table_1.md"
     llm_parsed_tables_dir = Path("../llm_parsed_tables/llama_3_1")
 

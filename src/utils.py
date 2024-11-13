@@ -139,5 +139,9 @@ def save_str_as_txt_file(txt_file_path, str_content) -> None:
 
 
 def read_json(json_file_path: Path) -> dict:
-    with open(json_file_path, "r") as json_file:
-        return json.load(json_file)
+    if Path(json_file_path).exists():
+        with open(json_file_path, "r") as json_file:
+                return json.load(json_file)
+    else:
+        logger.warning(f"The provided json file '{json_file_path}' does not exist.")
+        return {}
