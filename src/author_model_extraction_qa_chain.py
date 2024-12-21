@@ -1,26 +1,24 @@
 import os
 from pathlib import Path
 
-from src.utils import create_dir_if_not_exists
+from src.utils import create_dir_if_not_exists, save_dict_to_json
 
 MODEL_NAME = "gpt-4o"
 
 # Load documents
 import os
 
+from dotenv import load_dotenv
 from langchain.chains import RetrievalQA
 from langchain.document_loaders import TextLoader
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.text_splitter import CharacterTextSplitter
+from langchain.prompts import PromptTemplate
 from langchain.vectorstores import FAISS
 from langchain_core.documents import Document
-from langchain_openai import ChatOpenAI
-from src.utils import read_json
-from dotenv import load_dotenv
-from pydantic import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser
-from langchain.prompts import PromptTemplate
-
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, Field
+from src.utils import read_json
 
 load_dotenv()
 
@@ -59,10 +57,7 @@ def get_new_documents(documents, existing_filenames):
             new_documents.append(doc)
     return new_documents
 
-# Main function to create and run the QA chain
-def main(folder_path: str):
-
-    # Load documents
+def load_vector_store(folder_path):
     documents = load_documents(folder_path)
 
     # Load or create the FAISS database
@@ -98,8 +93,15 @@ def main(folder_path: str):
     else:
         print("No new documents to add.")
 
+    return vector_store
+
+# Main function to create and run the QA chain
+def main(folder_path: str, output_dir_path):
+    file_name = str(Path(folder_path).parent).split("/")[-1]
+    # Load documents
+    vector_store = load_vector_store(folder_path)
     # Create the retrieval-based QA chain
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+    retriever = vector_store.as_retriever(search_kwargs={"k": 6, "filter": {"file_name": file_name}})
     llm = ChatOpenAI(model=MODEL_NAME) # "gpt-3.5-turbo"
     output_parser = JsonOutputParser(pydantic_object=Response)
     PROMPT_TEMPLATE = PromptTemplate(
@@ -124,13 +126,22 @@ def main(folder_path: str):
 
     # Run the QA chain interactively
     query = "what's the name of approaches/models that the authors of this paper introduced? Please provide the names as they apper in results tables."
-    'The output should be formatted as a JSON instance that conforms to the JSON schema below.\n\nAs an example, for the schema {"properties": {"foo": {"title": "Foo", "description": "a list of strings", "type": "array", "items": {"type": "string"}}}, "required": ["foo"]}\nthe object {"foo": ["bar", "baz"]} is a well-formatted instance of the schema. The object {"properties": {"foo": ["bar", "baz"]}} is not well-formatted.\n\nHere is the output schema:\n```\n{"properties": {"extracted_models_approaches": {"description": "A list of models/approaches retireved from documents", "items": {"type": "string"}, "title": "Extracted Models Approaches", "type": "array"}}, "required": ["extracted_models_approaches"]}\n```'
 
-    result = qa_chain.invoke(query)
+    result = qa_chain.invoke(
+        {"query": query, "filter": {"file_name": file_name}})
     print("\nAnswer:", result["result"])
     print("\nSources:")
-    for doc in result["source_documents"]:
-        print("-", doc.metadata.get("file_name", "Unknown"))
+    result_query = f"Having extracted authors approach/mode within this response:{result['result']} please extract metric and value of the metric which corresponds to this approach/model"
+    result_response = qa_chain.invoke(
+        {"query": result_query, "filter": {"file_name": file_name}})
+    print("\nAnswer:", result_response["result"])
+
+    result_dict = {"authors_approach_response": result["result"],
+                   "authors_approach_result": result_response["result"]}
+    save_dict_to_json(result_dict, Path(output_dir_path, file_name + ".json"))
+
+    # for doc in result["source_documents"]:
+    #     print("-", doc.metadata.get("file_name", "Unknown"))
 
 
 if __name__ == "__main__":
@@ -138,6 +149,8 @@ if __name__ == "__main__":
     parsed_papers_without_table_content = list(Path(parsed_papers_without_table_content_dir).iterdir())
     author_model_extraction_dir_without_table_content = f"author_model_extraction/from_each_section_{MODEL_NAME}"
     create_dir_if_not_exists(Path(author_model_extraction_dir_without_table_content))
+
+   # vector_store = load_vector_store()
 
     for paper_path in parsed_papers_without_table_content:
         paper_name_output_path = Path(f"{author_model_extraction_dir_without_table_content}/{paper_path.name}")
@@ -151,4 +164,4 @@ if __name__ == "__main__":
         #     "marker_output",
         #     paper_path.name,
         # )
-        main(papers_section_text_path)
+        main(papers_section_text_path, paper_name_output_path)

@@ -160,3 +160,50 @@ Here is the content of a markdown file:
 
 Assistant:
 """
+
+
+triplets_extraction_prompt_llama_3_1 = """
+Human: You will be given a part of a research paper as input. 
+Please extract different tuples including the name of the task addressed in the paper, utilized datasets and evaluation metrics.
+Please use json format for each different tuple. Example format: [{{"Task": "Task name", "Dataset": "Dataset name", "Metric": "Metric name"}}]. 
+Your answer will immediately start with the json object satisfying the given template and contain nothing else.
+If you cannot find any of such tuples, return empty string without any explanation.
+If you cannot find all of required fields, skip them, extracted tuples must contain all of the fields.
+
+Part of a research paper: 
+<part_of_research_paper>
+{part_of_research_paper}
+</part_of_research_paper>
+
+
+Assistant:
+"""
+
+
+triplets_extraction_prompt_gpt_4 = """
+Human: You will be given a part of a research paper as input. 
+Please extract different tuples including the name of the task addressed in the paper, utilized datasets and evaluation metrics.
+Please use json format for each different tuple. Example format: [{{"Task": "Task name", "Dataset": "Dataset name", "Metric": "Metric name"}}]. 
+Your answer will immediately start with the json object satisfying the given template and contain nothing else.
+
+Follow below instructions: 
+<instructions>
+1. If you cannot find any of such tuples, return empty string without any explanation.
+2. If you cannot find all of required fields, skip them, extracted tuples must contain all of the fields.
+3. Your answer will immediately start with the json object satisfying the given template and contain nothing else.
+</instructions>
+
+
+Part of a research paper: 
+<part_of_research_paper>
+{part_of_research_paper}
+</part_of_research_paper>
+
+
+Assistant:
+"""
+
+system_prompt_for_triplet_extraction_gpt4o = \
+"""
+You are a helpful assistant. 
+"""

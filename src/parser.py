@@ -1,5 +1,6 @@
 import json
 import re
+from importlib.metadata import files
 from pathlib import Path
 
 import pandas as pd
@@ -7,16 +8,11 @@ import pdfplumber
 import tabula
 from llama_parse import LlamaParse
 from PyPDF2 import PdfReader
-from tqdm import tqdm
-
 from src.logger import logger
-from src.utils import (
-    create_dir_if_not_exists,
-    find_closest_string,
-    read_markdown_file_content,
-    run_bash_command,
-    save_str_as_markdown,
-)
+from src.utils import (create_dir_if_not_exists, find_closest_string,
+                       read_markdown_file_content, run_bash_command,
+                       save_str_as_markdown)
+from tqdm import tqdm
 
 
 def parse_pdf_with_tabula(pdf_file_path: str | Path) -> list[pd.DataFrame]:
@@ -74,23 +70,21 @@ def extract_pdf_section(section_name: str, markdown_file_path: str) -> str:
 
 
 def fix_sections_with_wrong_chars(
-    marker_markdown_file_path, extracted_sections, wrong_chars=set("*")
-) -> list[str]:
+    marker_markdown_file_path, extracted_sections, wrong_chars={"*"}) -> list[str]:
     file_content = read_markdown_file_content(marker_markdown_file_path)
     no_of_changes = 0
     for i, section in enumerate(extracted_sections):
+        section = re.sub(r'#', '', section)
         if set(section).intersection(wrong_chars):
             no_of_changes += 1
             correct_section = "".join(
                 [char for char in section if char not in wrong_chars]
             )
             file_content = file_content.replace(section, correct_section)
+            extracted_sections[i] = correct_section if not correct_section.startswith(" ") else correct_section[1:]
+        elif section.startswith(" "):
+            correct_section = section[1:]
             extracted_sections[i] = correct_section
-        elif section.startswith("# "):
-            correct_section = section[2:]
-            extracted_sections[i] = correct_section
-        elif section.startswith("#"):
-            extracted_sections[i] = section[1:]
     if no_of_changes > 0:
         save_str_as_markdown(marker_markdown_file_path, file_content)
     return extracted_sections
@@ -110,8 +104,10 @@ def extract_pdf_sections_with_marker_metadata(marker_metadata_file: str) -> list
         files_content = json.load(metadata_file)
     if "toc" in files_content:
         toc_component = files_content["toc"]
-    else:
+    elif "pdf_toc" in files_content:
         toc_component = files_content["pdf_toc"]
+    else:
+        toc_component = files_content['table_of_contents']
     sections = [section["title"] for section in toc_component]
     return sections
 
@@ -128,12 +124,13 @@ def combine_section_names(
     return section_names_with_correct_structure
 
 
-def extract_pdf_sections_content(marker_markdown_file_path: str) -> dict[str, str]:
+def extract_pdf_sections_content(marker_markdown_file_path: str, marker_markdown_metadata_file_path: str = '') -> dict[str, str]:
     logger.info("Extracting PDF sections ...")
     pdf_sections_correct_names = extract_pdf_sections_with_markdown(
         marker_markdown_file_path=marker_markdown_file_path
     )
-    marker_metadata_file_path = Path(marker_markdown_file_path).parent / (
+
+    marker_metadata_file_path = marker_markdown_metadata_file_path if marker_markdown_metadata_file_path else  Path(marker_markdown_file_path).parent / (
         Path(marker_markdown_file_path).stem + "_meta.json"
     )
     pdf_sections = extract_pdf_sections_with_marker_metadata(
@@ -147,15 +144,19 @@ def extract_pdf_sections_content(marker_markdown_file_path: str) -> dict[str, st
     )
     pdf_section_contents = {}
     for section in combine_sections_names:
-        pdf_section_contents.update(
-            {
-                section: extract_pdf_section(
-                    section, markdown_file_path=marker_markdown_file_path
-                )
-            }
-        )
-        if not section:
-            logger.warning(f"The provided section: {section} from the file: {marker_markdown_file_path} is empty!")
+        try:
+            section_text = extract_pdf_section(
+                        section, markdown_file_path=marker_markdown_file_path
+                    )
+            pdf_section_contents.update(
+                {
+                    section: section_text
+                }
+            )
+            if not section_text:
+                logger.warning(f"The provided section: {section} from the file: {marker_markdown_file_path} is empty!")
+        except Exception as e:
+            print(e)
 
     logger.info("PDF sections extracted")
     return pdf_section_contents

@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 from PyPDF2 import PdfReader, PdfWriter
-
 from src.logger import logger
 from src.utils import create_dir_if_not_exists, run_bash_command
 
@@ -59,7 +58,7 @@ def parse_pdf_with_marker(pdf_file_path: str, output_dir: str) -> str:
     else:
         logger.info(f"Running marker for this PDF: {pdf_file_path}")
         create_dir_if_not_exists(Path(output_dir))
-        run_bash_command(f"marker_single {pdf_file_path} {output_dir}")
+        run_bash_command(f"marker_single {pdf_file_path} --output_dir {output_dir}")
         logger.info("Running marker for this PDF completed")
 
     markdown_file_path = os.path.join(

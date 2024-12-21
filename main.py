@@ -19,12 +19,12 @@ from src.utils import (
 )
 
 set_env()
-MODEL_NAME = "llama3.1"
+MODEL_NAME = "gpt-4o"
 
 if __name__ == "__main__":
 
     papers_dir = "papers/research_papers"
-    experiment_dir = f"parsing_experiments/11_11_2024_fixed_section_extraction_{MODEL_NAME}"
+    experiment_dir = f"parsing_experiments/15_12_2024_{MODEL_NAME}"
     create_dir_if_not_exists(Path(experiment_dir))
     papers_dir_list = list(Path(papers_dir).iterdir())
 
