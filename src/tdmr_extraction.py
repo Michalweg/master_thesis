@@ -44,8 +44,10 @@ def main(extracted_triplet_path_dir, all_extracted_author_approach, extracted_ta
     for author_approach in all_extracted_author_approach:
         for triplet_path in Path(extracted_triplet_path_dir).iterdir():
             if str(triplet_path).endswith(".json"):
-
-                triplet_set = read_json(triplet_path)
+                try:
+                    triplet_set = read_json(triplet_path)
+                except:
+                    continue
                 for triplet in triplet_set:
                     for table_path in Path(extracted_tables_dir).iterdir():
                         table = pd.read_csv(table_path)
@@ -60,9 +62,10 @@ def main(extracted_triplet_path_dir, all_extracted_author_approach, extracted_ta
                             response = parser.parse(response)
                             print(response)
                             output_list.append(response)
+                            break
                         except:
                             print(response)
-    save_dict_to_json(output_list, os.path.join(tdmr_extraction_dir, 'tdmr_extraction.json'))
+    save_dict_to_json(output_list, os.path.join(tdmr_extraction_dir, f'{Path(extracted_triplet_path_dir).name}_tdmr_extraction.json'))
 
 if __name__ == "__main__":
     parsed_papers_without_table_content_dir = "parsing_experiments/15_12_2024_gpt-4o"
@@ -81,12 +84,17 @@ if __name__ == "__main__":
                                                     paper_path.name)
         all_extracted_authors_approach = set()
         for section_path in Path(extracted_approach_dir_path).iterdir():
-            author_approach = read_json(section_path)['extracted_model_approach_names']
-            if author_approach:
-                for approach in author_approach:
-                    all_extracted_authors_approach.add(approach)
+            try:
+                author_approach = read_json(section_path)['extracted_model_approach_names']
+                if author_approach:
+                    for approach in author_approach:
+                        all_extracted_authors_approach.add(approach)
+            except:
+                continue
 
         extracted_triplet_path_dir = os.path.join(extracted_triplet_dir_path, paper_path.name)
         extracted_tables_dir = os.path.join(parsed_papers_without_table_content_dir, paper_path.name, 'manual_extracted_tables')
+        if not Path(extracted_tables_dir).exists():
+            continue
 
         main(extracted_triplet_path_dir, all_extracted_authors_approach, extracted_tables_dir, tdmr_extraction_dir,)
