@@ -17,30 +17,7 @@ from tqdm import tqdm
 
 def parse_pdf_with_tabula(pdf_file_path: str | Path) -> list[pd.DataFrame]:
     logger.info(f"Extracting tables from PDF: {pdf_file_path} with Tabula")
-    dfs = []
-    reader = PdfReader(pdf_file_path)
-    no_pages = len(reader.pages)
-    for page in range(no_pages):
-        try:
-            # Try using lattice mode
-            # print(f"Attempting to extract tables with lattice=True ")
-            tables = tabula.read_pdf(pdf_file_path, pages=page, lattice=True)
-            if tables:
-                # print("Tables extracted successfully using lattice=True.")
-                dfs += tables
-        except Exception as e:
-            # print(f"Error with lattice=True on page {page}: {e}")
-            # print("Attempting to extract tables with stream=True...")
-
-            # Try using stream mode if lattice fails
-            try:
-                tables = tabula.read_pdf(pdf_file_path, pages=page, stream=True)
-                # print("Tables extracted successfully using stream=True.")
-                dfs += tables
-            except Exception as e:
-                # print(f"Error with stream=True on page {page}: {e}")
-                continue
-    logger.info(f"Extracting tables from PDF: {pdf_file_path} completed")
+    dfs = tabula.read_pdf(pdf_file_path, pages='all')
     return dfs
 
 
@@ -174,6 +151,7 @@ def parse_pdf_with_llama_parse(
 
 
 if __name__ == "__main__":
+    dfs = parse_pdf_with_tabula("/Users/Michal/Dokumenty_mac/MasterThesis/master_thesis/papers/research_papers/2305.14336v3.pdf")
     papers_dir = "papers/research_papers"
     experiment_dir = "parsing_experiments/29_10_2024_tabula_lattice_mode"
     papers_dir_list = list(Path(papers_dir).iterdir())
