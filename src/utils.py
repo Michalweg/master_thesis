@@ -115,6 +115,11 @@ def extract_tables_from_markdown(md_file_path: str) -> list[pd.DataFrame]:
         rows = [
             line.split("|")[1:-1] for line in table[2:]
         ]  # Skip the separator line (index 1)
+
+        # Process each cell to remove commas between digits
+        for i, row in enumerate(rows):
+            rows[i] = [re.sub(r"(?<=\d),(?=\d)", "", cell.strip()) for cell in row]
+
         df = pd.DataFrame(rows, columns=header)
         dataframes.append(df)
 
@@ -169,7 +174,7 @@ def read_json(json_file_path: Path) -> dict:
 def count_tokens_in_prompt(prompt: str, model_name: str) -> int:
     model_encoding_dict = {
         "gpt-4o": "o200k_base",
-        "gpt4": "cl100k_base",
+        "gpt-4": "cl100k_base",
         "gpt3.5": "cl100k_base"
     }
     if model_name not in model_encoding_dict:
