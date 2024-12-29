@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from src.logger import logger
 from src.openai_client import get_openai_model_response
 from src.parser_prompts import (gpt_4_prompt, llama_31_7B_prompt,
-                                triplets_extraction_prompt_llama_3_1)
+                                triplets_extraction_prompt_llama_3_1, gpt_4o_prompt_rana)
 from src.utils import (create_dir_if_not_exists, read_json,
                        read_markdown_file_content, save_dict_to_json,
                        save_str_as_markdown, save_str_as_txt_file)
@@ -21,7 +21,8 @@ from src.utils import (create_dir_if_not_exists, read_json,
 SUPPORTED_MODELS_PROMPTS = {
     "llama3.1": llama_31_7B_prompt,
     "llama3.2": llama_31_7B_prompt,
-    "gpt-4o": gpt_4_prompt
+    "gpt-4o": gpt_4_prompt,
+    "gpt-4": gpt_4o_prompt_rana#gpt_4_prompt
 }
 
 class ModelResponseTablesExtraction(BaseModel):
@@ -70,7 +71,7 @@ def parse_markdown_with_llm(
     logger.info(f"Parsing Markdown with {model_name} ...")
     file_content = read_markdown_file_content(markdown_file_path)
 
-    if file_content:
+    if len(file_content) > 10:
         output_parser = JsonOutputParser(pydantic_object=ModelResponseTablesExtraction)
         prompt_template = SUPPORTED_MODELS_PROMPTS[model_name]
 
@@ -78,7 +79,7 @@ def parse_markdown_with_llm(
             markdown_file_content=file_content
         )
 
-        if model_name == "gpt-4o":
+        if model_name == "gpt-4o" or model_name == "gpt-4":
             model_response = get_openai_model_response(prompt, model_name)
         else:
             model_response = send_request_to_the_model_with_ollama(prompt, url)
@@ -122,13 +123,13 @@ def parse_model_response(model_response: str, output_parser: JsonOutputParser | 
             str_content=model_response,
         )
     else:
-        parsed_response_file_path = os.path.join(
-            str(output_dir),
-            Path(markdown_file_path).stem
-            + f"len_{len(file_content)}"
-            + ".json",
-        )
         if parsed:
+            parsed_response_file_path = os.path.join(
+                str(output_dir),
+                Path(markdown_file_path).stem
+                + f"len_{len(file_content)}"
+                + ".json",
+            )
             save_dict_to_json(
                 parsed,
                 parsed_response_file_path
@@ -140,7 +141,7 @@ def parse_model_response(model_response: str, output_parser: JsonOutputParser | 
 
 
 
-def parse_markdown_sections(
+def parse_markdown_sections_to_extract_tables_using_llm(
     sections_dict: dict, output_dir: str | Path, model_name: str
 ):
     for section in sections_dict.keys():
@@ -154,14 +155,21 @@ def json_csv_to_dataframe_converter(json_file_path) -> list[pd.DataFrame]:
     all_dfs_in_json_file = read_json(json_file_path)
     dfs = []
     if all_dfs_in_json_file:
-        for table_name in all_dfs_in_json_file:
-            if all_dfs_in_json_file[table_name]:
+        for table_data in all_dfs_in_json_file:
+            if isinstance(table_data, dict):
+                data = table_data['data']
+            elif isinstance(table_data, str):
+                data = all_dfs_in_json_file[table_data]
+            else:
+                data = ""
+
+            if data:
                 try:
-                    df = pd.read_csv(StringIO(all_dfs_in_json_file[table_name]), sep=",")
+                    df = pd.read_csv(StringIO(data), sep=",")
                     dfs.append(df)
                 except Exception as e:
                     logger.warning(
-                        f"Reading dataframe from extracted response: {all_dfs_in_json_file[table_name]} failed due to an error: {e}"
+                        f"Reading dataframe from extracted response: {all_dfs_in_json_file[table_data]} failed due to an error: {e}"
                     )
             else:
                 logger.info(f"Extracted section: {str(json_file_path).split('_')[0]} does not contain any table")
