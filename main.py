@@ -3,7 +3,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from src.llm_parser import parse_markdown_sections
+from src.llm_parser import parse_markdown_sections_to_extract_tables_using_llm
 from src.logger import logger
 from src.marker_parser import parse_pdf_with_marker
 from src.parser import (
@@ -24,7 +24,7 @@ MODEL_NAME = "gpt-4o"
 if __name__ == "__main__":
 
     papers_dir = "papers/research_papers"
-    experiment_dir = f"parsing_experiments/15_12_2024_{MODEL_NAME}"
+    experiment_dir = f"parsing_experiments/28_12_2024_{MODEL_NAME}"
     create_dir_if_not_exists(Path(experiment_dir))
     papers_dir_list = list(Path(papers_dir).iterdir())
 
@@ -77,7 +77,7 @@ if __name__ == "__main__":
                 paper_output_dir_path, "llm_extracted_tables"
             )
             os.makedirs(llm_tables_file_path, exist_ok=True)
-            parse_markdown_sections(
+            parse_markdown_sections_to_extract_tables_using_llm(
                 pdf_sections_content, llm_tables_file_path, model_name=MODEL_NAME
             )
         else:
