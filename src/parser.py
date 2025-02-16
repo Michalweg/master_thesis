@@ -11,7 +11,7 @@ from PyPDF2 import PdfReader
 from src.logger import logger
 from src.utils import (create_dir_if_not_exists, find_closest_string,
                        read_markdown_file_content, run_bash_command,
-                       save_str_as_markdown)
+                       save_str_as_markdown, get_unique_values_with_the_same_order)
 from tqdm import tqdm
 
 
@@ -21,13 +21,14 @@ def parse_pdf_with_tabula(pdf_file_path: str | Path) -> list[pd.DataFrame]:
     return dfs
 
 
-def parse_pdf_with_pdf_plumber(pdf_file_path: str | Path):
+def parse_pdf_with_pdf_plumber(pdf_file_path: str | Path) -> list:
+    tables = []
     with pdfplumber.open(pdf_file_path) as pdf:
         for page in pdf.pages:
-            print(page.extract_tables())
-            text = page.extract_text()
-            print(text)
-
+            tables.extend(page.extract_tables())
+            # text = page.extract_text()
+            # print(text)
+    return tables
 
 def parse_pdf_with_py_pdf2(pdf_file_path: str | Path) -> dict[int, str]:
     reader = PdfReader(pdf_file_path)
@@ -85,8 +86,11 @@ def extract_pdf_sections_with_marker_metadata(marker_metadata_file: str) -> list
         toc_component = files_content["pdf_toc"]
     else:
         toc_component = files_content['table_of_contents']
+    used = set()
     sections = [section["title"] for section in toc_component]
-    return sections
+
+    unique = [section for section in sections if section not in used and (used.add(section) or True)]
+    return unique
 
 
 def combine_section_names(
@@ -119,12 +123,16 @@ def extract_pdf_sections_content(marker_markdown_file_path: str, marker_markdown
     combine_sections_names = fix_sections_with_wrong_chars(
         marker_markdown_file_path, combine_sections_names
     )
+    unique_combined_section_names = get_unique_values_with_the_same_order(combine_sections_names)
     pdf_section_contents = {}
-    for section in combine_sections_names:
+    for i, section in enumerate(unique_combined_section_names[:-1]):
         try:
             section_text = extract_pdf_section(
                         section, markdown_file_path=marker_markdown_file_path
                     )
+            next_correct_section_name = find_closest_string(unique_combined_section_names[i+1], pdf_sections_correct_names)
+            if next_correct_section_name in section_text:
+                section_text = section_text[:section_text.find(next_correct_section_name)]
             pdf_section_contents.update(
                 {
                     section: section_text
@@ -134,6 +142,15 @@ def extract_pdf_sections_content(marker_markdown_file_path: str, marker_markdown
                 logger.warning(f"The provided section: {section} from the file: {marker_markdown_file_path} is empty!")
         except Exception as e:
             print(e)
+    last_section = unique_combined_section_names[-1]
+    section_text = extract_pdf_section(
+        last_section, markdown_file_path=marker_markdown_file_path
+    )
+    pdf_section_contents.update(
+        {
+            last_section: section_text
+        }
+    )
 
     logger.info("PDF sections extracted")
     return pdf_section_contents

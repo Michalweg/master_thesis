@@ -1,14 +1,25 @@
+from pathlib import Path
+
 from dotenv import load_dotenv
 from openai import OpenAI
+from openai.types.beta.threads.message_create_params import (
+    Attachment, AttachmentToolFileSearch)
+from PyPDF2 import PdfReader, PdfWriter
+from tqdm import tqdm
+
+from src.parser_prompts import (gpt_4o_prompt_rana,
+                                gpt_4o_prompt_rana_without_document,
+                                gpt_4o_prompt_rana_without_document_output_csv,
+                                triplets_extraction_prompt_gpt_4)
+from src.utils import (create_dir_if_not_exists, save_dict_to_json,
+                       save_str_as_txt_file)
 
 load_dotenv()
 from src.utils import count_tokens_in_prompt
 
 MAXIMUM_MO_TOKENS_PER_PROMPT = 10_000
 
-
 client = OpenAI(
-    # defaults to os.environ.get("OPENAI_API_KEY")
 )
 
 def get_openai_model_response(prompt: str, model_name: str = "gpt-4o"):
@@ -32,5 +43,113 @@ def get_openai_model_response(prompt: str, model_name: str = "gpt-4o"):
     except Exception as e:
         return f"An error occurred: {e}"
 
+def get_openai_model_response_based_on_the_whole_document(model_name: str,
+                                                          file_path: str):
+    file = client.files.create(file=open(file_path, "rb"), purpose="assistants")
+
+    pdf_assistant = client.beta.assistants.create(
+        model="gpt-4o",
+        description="An assistant to extract the contents of PDF files.",
+        tools=[{"type": "file_search"}],
+        name="PDF assistant",
+    )
+
+    # Create thread
+    thread = client.beta.threads.create()
+
+    prompt_without_file_id = triplets_extraction_prompt_gpt_4
+
+    # Create assistant
+    client.beta.threads.messages.create(
+        thread_id=thread.id,
+        role="user",
+        attachments=[
+            Attachment(
+                file_id=file.id, tools=[AttachmentToolFileSearch(type="file_search")]
+            )
+        ],
+        content=prompt_without_file_id,
+    )
+
+    # Run thread
+    run = client.beta.threads.runs.create_and_poll(
+        thread_id=thread.id, assistant_id=pdf_assistant.id, timeout=1000
+    )
+
+    if run.status != "completed":
+        raise Exception("Run failed:", run.status)
+
+    messages_cursor = client.beta.threads.messages.list(thread_id=thread.id)
+    messages = [message for message in messages_cursor]
+
+    # Output text
+    res_txt = messages[0].content[0].text.value
+    print(res_txt)
+
+    # return completion.choices[0].message.content
+    return res_txt
 
 
+if __name__ == "__main__":
+    papers_dir = "leaderboard-generation-papers"
+    papers_dir_list = list(Path(papers_dir).iterdir())
+    output_dir = 'triplets_extraction/from_entire_document_refined_prompt_gpt_4o'
+    create_dir_if_not_exists(Path(output_dir))
+    already_processed_files = [paper_path.name for paper_path in Path(output_dir).iterdir()]
+
+    import os
+
+    from langchain_core.output_parsers import JsonOutputParser
+    output_parser = JsonOutputParser()
+
+    for i, paper_path in tqdm(enumerate(papers_dir_list)):
+
+
+
+        if paper_path.suffix == ".pdf":
+            paper_name = paper_path.stem
+            try:
+                inputpdf = PdfReader(open(paper_path, "rb"))
+            except Exception as e:
+                print(f"Skipping this file: {paper_path}")
+                continue
+
+            num_pages = len(inputpdf.pages)
+
+            if paper_path.stem in already_processed_files:
+                print(f"This file: {paper_path.stem} has already been processed")
+                continue
+            dir_to_save_paper_results = os.path.join(output_dir, paper_name)
+            create_dir_if_not_exists(Path(dir_to_save_paper_results))
+            # Split PDF to each of two subpages
+            # Process the PDF in chunks of two pages
+            for i in range(0, num_pages, 2):
+                output = PdfWriter()
+                # Add the current page
+                output.add_page(inputpdf.pages[i])
+                # Add the next page if it exists
+                if i + 1 < num_pages:
+                    output.add_page(inputpdf.pages[i + 1])
+
+                # Create a temporary file for storing the two-page PDF
+                # with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+                temp_file_path = "temp_file.pdf"
+                with open(temp_file_path, "wb") as temp_file:
+                    output.write(temp_file)
+                # temp_file_path = temp_file.name  # Store the temp file path
+                model_response = get_openai_model_response_based_on_the_whole_document(model_name='gpt-4o', file_path=temp_file_path)
+                if model_response:
+                    try:
+                        parsed_response = output_parser.parse(model_response)
+                        if parsed_response:
+                            save_dict_to_json(parsed_response, os.path.join(dir_to_save_paper_results, paper_path.stem + f"_{str(i)}.json"))
+                        else:
+                            print(f"Parsed response is empty")
+                    except:
+                        print(f"There was problem with parsing this passage: {model_response}")
+                        save_str_as_txt_file(os.path.join(dir_to_save_paper_results, paper_path.stem + ".txt"), model_response)
+                else:
+                    print(f"From the {i} two pages it cannot read any of the tables from this {paper_name} paper!")
+                os.remove(temp_file_path)
+                if i == 7:
+                    break

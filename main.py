@@ -10,6 +10,7 @@ from src.parser import (
     extract_pdf_sections_content,
     parse_pdf_with_llama_parse,
     parse_pdf_with_tabula,
+    parse_pdf_with_pdf_plumber
 )
 from src.utils import (
     extract_tables_from_markdown,
@@ -17,14 +18,20 @@ from src.utils import (
     saving_list_of_dfs,
     set_env, create_dir_if_not_exists,
 )
+import logging
+
+# Suppress warnings from font handling
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+logging.getLogger("pdfplumber").setLevel(logging.ERROR)
 
 set_env()
 MODEL_NAME = "gpt-4o"
 
 if __name__ == "__main__":
 
-    papers_dir = "papers/research_papers"
-    experiment_dir = f"parsing_experiments/28_12_2024_{MODEL_NAME}"
+    # papers_dir = "papers/research_papers"
+    papers_dir = 'various_tables_extraction_approaches_paper_dir'
+    experiment_dir = f"various_tables_extraction_approaches_summary_dir"
     create_dir_if_not_exists(Path(experiment_dir))
     papers_dir_list = list(Path(papers_dir).iterdir())
 
@@ -45,6 +52,10 @@ if __name__ == "__main__":
             extracted_tables_tabula = parse_pdf_with_tabula(paper_path)
             # Parsing PDF with Lama Parse
             # file_content = parse_pdf_with_llama_parse(paper_path, f"{experiment_dir}/{paper_name}/lama_markdown.md")
+
+            # Parsing PDF with PDF plumber
+            pdf_plumber_tables = parse_pdf_with_pdf_plumber(paper_path)
+
 
             paper_output_dir_path = Path(experiment_dir) / Path(paper_path).stem
             os.makedirs(paper_output_dir_path, exist_ok=True)
@@ -72,6 +83,17 @@ if __name__ == "__main__":
             )
             os.makedirs(tabula_tables_file_path, exist_ok=True)
             saving_list_of_dfs(extracted_tables_tabula, Path(tabula_tables_file_path))
+
+            # Saving tables from pdf plumber
+            pdf_plumber_tables_file_path = os.path.join(
+                paper_output_dir_path, "pdf_plumber_tables"
+            )
+            os.makedirs(pdf_plumber_tables_file_path, exist_ok=True)
+            try:
+                saving_list_of_dfs(pdf_plumber_tables, Path(pdf_plumber_tables_file_path))
+            except Exception as e:
+                logger.error(f"PDF plumber extracted tables could not been saved, due to: {e}")
+
             # LLM extracted tables
             llm_tables_file_path = os.path.join(
                 paper_output_dir_path, "llm_extracted_tables"

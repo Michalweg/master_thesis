@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from src.logger import logger
 from typing import Union
 
+
 def set_env():
     os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0"
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -119,9 +120,11 @@ def extract_tables_from_markdown(md_file_path: str) -> list[pd.DataFrame]:
         # Process each cell to remove commas between digits
         for i, row in enumerate(rows):
             rows[i] = [re.sub(r"(?<=\d),(?=\d)", "", cell.strip()) for cell in row]
-
-        df = pd.DataFrame(rows, columns=header)
-        dataframes.append(df)
+        try:
+            df = pd.DataFrame(rows, columns=header)
+            dataframes.append(df)
+        except:
+            logger.error("")
 
     return dataframes
 
@@ -183,6 +186,10 @@ def count_tokens_in_prompt(prompt: str, model_name: str) -> int:
     return len(encoding.encode(prompt))
 
 
+def get_unique_values_with_the_same_order(data: list) -> list:
+    used = set()
+    unique = [element for element in data if element not in used and (used.add(element) or True)]
+    return unique
 
 
 

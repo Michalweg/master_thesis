@@ -21,7 +21,7 @@ from src.utils import (create_dir_if_not_exists, read_json,
 SUPPORTED_MODELS_PROMPTS = {
     "llama3.1": llama_31_7B_prompt,
     "llama3.2": llama_31_7B_prompt,
-    "gpt-4o": gpt_4_prompt,
+    "gpt-4o":  gpt_4_prompt,# gpt_4o_prompt_rana,
     "gpt-4": gpt_4o_prompt_rana#gpt_4_prompt
 }
 

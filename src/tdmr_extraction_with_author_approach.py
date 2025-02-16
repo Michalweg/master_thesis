@@ -72,7 +72,6 @@ def main(extracted_triplet_path_dir, all_extracted_author_approach, extracted_ta
                             print(response)
                             if response:
                                 output_list.append(response)
-                                break
                         except:
                             print(response)
     save_dict_to_json(output_list, os.path.join(tdmr_extraction_dir, f'{Path(extracted_triplet_path_dir).name}_tdmr_extraction.json'))
@@ -104,8 +103,6 @@ if __name__ == "__main__":
 
         extracted_triplet_path_dir = os.path.join(extracted_triplet_dir_path, paper_path.name)
         extracted_tables_dir = os.path.join(parsed_papers_without_table_content_dir, paper_path.name, 'manual_extracted_tables')
-        # TODO verify why that's the case
-        # TODO fix the manual table extraction
         if not Path(extracted_tables_dir).exists():
             continue
 
