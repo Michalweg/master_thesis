@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pandas as pd
 from langchain.prompts import PromptTemplate
-from langchain_core.documents import Document
 from src.llm_parser import send_request_to_the_model_with_ollama
 from src.utils import (create_dir_if_not_exists, extract_tables_from_markdown,
                        save_data_to_json_file, save_dict_to_json,
@@ -68,10 +67,10 @@ def assign_table_text_and_caption_to_a_table(table_text_captions_dict: dict, pap
 
 
 if __name__ == "__main__":
-    papers_dir = "papers/research_papers"
-    experiment_dir = f"parsing_experiments/1_12_2024_{MODEL_NAME_FOR_CAPTION_ASSIGNMENT}"
+    papers_dir = "various_tables_extraction_approaches_paper_dir"
+    experiment_dir = f"various_tables_extraction_approaches_summary_dir"
     papers_dir_list = list(Path(papers_dir).iterdir())
-    tables_text_with_captions_dir = "tables_with_captions_dir"
+    tables_text_with_captions_dir = "tables_with_captions_dir_unstructured"
     create_dir_if_not_exists(Path(tables_text_with_captions_dir))
 
 
