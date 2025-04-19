@@ -32,7 +32,7 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def setup_logger(add_file_handler=False):
+def setup_logger(add_file_handler=ADD_FILE_HANDLER):
     # Generate a filename with the current date and time (precision to minutes)
     log_filename = datetime.now().strftime("%d_%m_%Y_%H-%M.log")
     log_filename = Path("../logs" + f"/{log_filename}")
