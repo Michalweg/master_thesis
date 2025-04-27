@@ -19,13 +19,16 @@ from src.utils import read_json
 class TdmrExtractionResponse(BaseModel):
     tdmr_dict: dict = Field(description="An updated dictionary containing task, dataset, metric and metric value.")
 
+class TableDecisionResponse(BaseModel):
+    explanation: str = Field(description="An explanation of the decision of choosing the table to extract result for provided triplet")
+    decision: bool = Field(description="Whether the table contains result for given triplet")
+
 from prompts.tdmr_extraction_without_model import (
-    TDMR_EXTRACTION_PROMPT_05_04, TDMR_EXTRACTION_PROMPT_07_02)
+    TDMR_EXTRACTION_PROMPT_05_04, TDMR_EXTRACTION_PROMPT_07_02, TABLE_DECISION_PROMPT)
 
 
 def main(extracted_triplet_path_dir, extracted_tables_dict_object, tdmr_extraction_dir):
     output_list = []
-    parser = JsonOutputParser(pydantc_object=TdmrExtractionResponse)
 
     for triplet_path in Path(extracted_triplet_path_dir).iterdir():
 
@@ -42,25 +45,58 @@ def main(extracted_triplet_path_dir, extracted_tables_dict_object, tdmr_extracti
 
                     csv_data = StringIO(table_object['data'])
                     table = pd.read_csv(csv_data)
-
                     table_caption = table_object['caption']
-                    prompt = PromptTemplate(input_variables=['triplet', 'table', 'authors_model'],
-                                            partial_variables={'format_instructions': parser.get_format_instructions()},
-                                            template=TDMR_EXTRACTION_PROMPT_07_02).format(triplet=triplet,
-                                                                                    table=table.to_markdown(),
-                                                                                    table_caption=table_caption)
 
-                    response = get_openai_model_response(prompt)
-                    try:
-                        response = parser.parse(response)
-                        print(response)
+                    table_decision = decide_whether_table_contains_result_for_given_triplet(triplet, table, table_caption, TABLE_DECISION_PROMPT)
+                    if table_decision['decision']:
+                        response = extract_result_from_given_table_for_triplet(triplet, table, table_caption, TDMR_EXTRACTION_PROMPT_07_02)
                         if response:
                             output_list.append(response)
 
-                    except Exception as e:
-                        print(f"This response could not been parsed: {response}")
+
 
     save_dict_to_json(output_list, os.path.join(tdmr_extraction_dir, f'{Path(extracted_triplet_path_dir).name}_tdmr_extraction.json'))
+
+
+def extract_result_from_given_table_for_triplet(triplet: dict, table: pd.DataFrame, table_caption: str,
+                                                prompt_template: str) -> dict:
+    parser = JsonOutputParser(pydantc_object=TdmrExtractionResponse)
+    prompt = PromptTemplate(input_variables=['triplet', 'table', 'authors_model'],
+                            partial_variables={'format_instructions': parser.get_format_instructions()},
+                            template=prompt_template).format(triplet=triplet,
+                                                                          table=table.to_markdown(),
+                                                                          table_caption=table_caption)
+
+    response = get_extract_from_openai(prompt, parser)
+
+    return response
+
+
+def get_extract_from_openai(prompt: str, parser: JsonOutputParser):
+    response = get_openai_model_response(prompt)
+    try:
+        response = parser.parse(response)
+        print(response)
+
+    except Exception as e:
+        print(f"This response could not been parsed: {response} due to an exception: {e}")
+        response = {}
+
+    return response
+
+
+def decide_whether_table_contains_result_for_given_triplet(triplet: dict, table: pd.DataFrame, table_caption: str,
+                                                           prompt_template: str) -> bool:
+    parser = JsonOutputParser(pydantc_object=TableDecisionResponse)
+    prompt = PromptTemplate(input_variables=['triplet', 'table', 'authors_model'],
+                            partial_variables={'format_instructions': parser.get_format_instructions()},
+                            template=prompt_template).format(triplet=triplet,
+                                                             table=table.to_markdown(),
+                                                             table_caption=table_caption)
+
+    response = get_extract_from_openai(prompt, parser)
+
+    return response
 
 
 def create_one_result_file(output_dir: Path):

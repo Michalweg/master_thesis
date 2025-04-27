@@ -68,3 +68,38 @@ Here are some guidelines:
 contain a relevant information for provided triplet, then please output an empty dict. 
 {format_instructions}
 """
+
+
+TABLE_DECISION_PROMPT = """
+You are provided with a triplet consisting of:
+- A **Dataset**
+- A **Task**
+- A **Metric**
+
+You are also given:
+- A **table** containing results
+- A **caption** describing the table
+
+Your task is to decide **whether or not** the provided table contains information that is relevant to the given triplet. 
+
+Please consider both the **content of the table** and the **caption** in making your decision. Relevant information means that the table contains numerical results or measurements that correspond to the specified dataset, task, and metric.
+
+### Inputs:
+
+Triplet:
+{triplet}
+
+Table:
+{table}
+
+Caption:
+{table_caption}
+
+### Guidelines:
+1. If the table clearly includes a result that corresponds to the combination of dataset, task, and metric, respond with a decision of **"Yes"**.
+2. If the table does **not** include relevant results (e.g., different dataset, irrelevant task, metric not mentioned), respond with a decision of **"No"**.
+3. If you are unsure or cannot determine the relevance from the given information, respond with a decision of **"Uncertain"**.
+4. Always provide a **brief explanation** (2–4 sentences) for your decision based on the input.
+
+{format_instructions}
+"""
