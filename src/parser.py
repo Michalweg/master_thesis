@@ -70,7 +70,7 @@ def fix_sections_with_wrong_chars(
 
 def extract_pdf_sections_with_markdown(marker_markdown_file_path: str) -> list[str]:
     files_content = read_markdown_file_content(marker_markdown_file_path)
-    sections = re.findall("(?<=\##)(.*?)(?=\n)", files_content)
+    sections = re.findall("(?<=\#)(.*?)(?=\n)", files_content)
     sections = [
         section if not section.startswith(" ") else section[1:] for section in sections
     ]
