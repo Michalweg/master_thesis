@@ -12,8 +12,10 @@ from src.parser import extract_pdf_sections_content
 from src.utils import (create_dir_if_not_exists, read_json,
                        read_markdown_file_content,
                        remove_table_data_from_markdown, save_data_to_json_file,
-                       save_str_as_markdown, save_str_as_txt_file)
+                       save_str_as_markdown, save_str_as_txt_file, save_dict_to_json)
 from tqdm import tqdm
+from src.marker_parser import parse_pdf_with_marker
+
 
 MODEL_NAME = "gpt-4o"
 
@@ -70,28 +72,60 @@ def extract_author_model_prediction( markdown_file_path: str | Path,
     else:
         logger.warning(f"There is no content in this markdown file: {markdown_file_path}")
 
+def combine_all_sections_based_json_into_one_file(output_dir_path: str, result_file_name: str = "author_model_approaches.json") -> None:
+    output_sections_dict_list: list[dict] = []
+    for section_file in Path(output_dir_path).iterdir():
+        if section_file.suffix == ".json":
+            section_result = read_json(section_file)
+            if section_result['extracted_model_approach_names']:
+                output_sections_dict_list.append({section_file.name.split("len")[0]: section_result['extracted_model_approach_names']})
+    save_dict_to_json(output_sections_dict_list, os.path.join(output_dir_path, result_file_name))
 
 if __name__ == "__main__":
-    parsed_papers_without_table_content_dir = "parsing_experiments/15_12_2024_gpt-4o"
-    parsed_papers_without_table_content = list(Path(parsed_papers_without_table_content_dir).iterdir())
-    author_model_extraction_dir_without_table_content = f"author_model_extraction/from_each_section_{MODEL_NAME}_no_vector_db"
+    author_model_approach_experiment_dir_path = "extending_results_extracton_with_author_approach"
+    papers_dir = os.path.join(author_model_approach_experiment_dir_path, "papers")
+    parsed_papers_without_table_content: list = list(Path(papers_dir).iterdir())
+
+    # Setting up and creating output dir
+    author_model_extraction_dir_without_table_content = f"author_model_extraction/from_each_section_{MODEL_NAME}_no_vector_db_29_04_2025"
     create_dir_if_not_exists(Path(author_model_extraction_dir_without_table_content))
 
-    for paper_path in parsed_papers_without_table_content:
-        paper_name_output_path = Path(f"{author_model_extraction_dir_without_table_content}/{paper_path.name}")
+
+    for paper_path in tqdm(parsed_papers_without_table_content):
+        # Setting up and creating an output di for specific paper
+        paper_name_output_path = Path(f"{author_model_extraction_dir_without_table_content}/{paper_path.stem}")
         create_dir_if_not_exists(paper_name_output_path)
+
+        # Reading extracted_text_dict.json if exists, otherwise create it on the spot
         papers_section_text_path = os.path.join(
             paper_path,
             "extracted_text_dict.json",
         )
-        papers_section_text = read_json(Path(papers_section_text_path))
-        for section in papers_section_text:
-            save_str_as_markdown(f"{section}.md", papers_section_text[section])
-            extract_author_model_prediction(
-                markdown_file_path=f"{section}.md",
-                output_dir=paper_name_output_path,
-                model_name=MODEL_NAME,
-                prompt_template=EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_PROMPT,
-                use_openai=True,
+
+        if not Path(papers_section_text_path).exists():
+            # Create this file by parsing the file with Marker and then extract section out of it.
+            marker_output_dir = f"{author_model_approach_experiment_dir_path}/{paper_path.stem}/marker_output"
+            markdown_file_path = parse_pdf_with_marker(
+                str(paper_path), marker_output_dir
             )
-            os.remove(f"{section}.md")
+            papers_section_text = extract_pdf_sections_content(markdown_file_path)
+        else:
+            papers_section_text = read_json(Path(papers_section_text_path))
+
+        # Iterating through each section
+        for section in papers_section_text:
+            if papers_section_text[section]:
+                save_str_as_markdown(f"{section}.md", papers_section_text[section])
+                extract_author_model_prediction(
+                    markdown_file_path=f"{section}.md",
+                    output_dir=paper_name_output_path,
+                    model_name=MODEL_NAME,
+                    prompt_template=EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_PROMPT,
+                    use_openai=True,
+                )
+                os.remove(f"{section}.md")
+            else:
+                logger.warning(f"For this section: {section} no content could be extracted thus no model/approach")
+
+            # Saving all extracted results for given paper 
+            combine_all_sections_based_json_into_one_file(output_dir_path=paper_path)
