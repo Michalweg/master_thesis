@@ -10,10 +10,12 @@ import requests
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
+
 from src.logger import logger
 from src.openai_client import get_openai_model_response
-from src.parser_prompts import (gpt_4_prompt, llama_31_7B_prompt,
-                                triplets_extraction_prompt_llama_3_1, gpt_4o_prompt_rana)
+from src.parser_prompts import (gpt_4_prompt, gpt_4o_prompt_rana,
+                                llama_31_7B_prompt,
+                                triplets_extraction_prompt_llama_3_1)
 from src.utils import (create_dir_if_not_exists, read_json,
                        read_markdown_file_content, save_dict_to_json,
                        save_str_as_markdown, save_str_as_txt_file)

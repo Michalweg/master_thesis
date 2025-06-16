@@ -8,15 +8,14 @@ MODEL_NAME = "gpt-4o"
 import os
 from io import StringIO
 
-
 import pandas as pd
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
+
+from src.logger import logger
 from src.openai_client import get_openai_model_response
 from src.utils import read_json
-from src.logger import logger
-
 
 
 class TdmrExtractionResponse(BaseModel):

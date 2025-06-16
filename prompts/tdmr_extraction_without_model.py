@@ -41,7 +41,34 @@ Here are some guidelines:
 2. If you will find multiple results for given triplet, please extract all results in the form of a list, so in the 'Result' dict will be a list containing all values. 
 3. **DO NOT CREATE** a dictionary with keys such as "models" and the corresponding results as a value for Results section, you **SHOULD** put a value in "Result" section 
 (or list of values if multiple were found) 
+4. If the results values have signs such as "±" or similar, please ignore these chars and extract only the main part (value). For example if result value is defined like "90.23 ± 0.16", please extract only "90.23" out of it. 
 {format_instructions}
+"""
+
+TDMR_EXTRACTION_PROMPT_07_02_no_format_instructions_system_prompt = """
+You will be given a triplet (an information piece which is constructed from the Dataset, Metric and Task) and a table with the results alongside its caption. 
+Your task is to assign value to the extracted dataset, metric and task triplet based on the provided data in a table. 
+Please output an updated dictionary with this result (so final dictionary consists of dataset, metric, task and extracted result)
+Please note that table caption does not have it explicitly state the dataset for given triplet, in this case please assume
+that dataset matches and extract result for the task, metric and model approach. 
+
+Here are some guidelines: 
+1. If you cannot find the information about the result for specific triplet, output empty dict. 
+2. If you will find multiple results for given triplet, please extract all results in the form of a list, so in the 'Result' dict will be a list containing all values. 
+3. **DO NOT CREATE** a dictionary with keys such as "models" and the corresponding results as a value for Results section, you **SHOULD** put a value in "Result" section 
+(or list of values if multiple were found) 
+4. If the results values have signs such as "±" or similar, please ignore these chars and extract only the main part (value). For example if result value is defined like "90.23 ± 0.16", please extract only "90.23" out of it. 
+"""
+
+TDMR_EXTRACTION_PROMPT_07_02_no_format_instructions_prompt = """
+Here is extracted triplet:
+{triplet}
+
+Here is the table with results:
+{table} 
+
+Here is the table caption:
+{table_caption}
 """
 
 TDMR_EXTRACTION_PROMPT_05_04 = \

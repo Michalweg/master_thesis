@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from PyPDF2 import PdfReader, PdfWriter
+
 from src.logger import logger
 from src.utils import create_dir_if_not_exists, run_bash_command
 

@@ -1,8 +1,11 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+from tqdm import tqdm
+
 from src.llm_parser import (parse_model_response,
                             send_request_to_the_model_with_ollama)
 from src.logger import logger
@@ -13,11 +16,8 @@ from src.utils import (create_dir_if_not_exists, read_json,
                        read_markdown_file_content,
                        remove_table_data_from_markdown, save_data_to_json_file,
                        save_str_as_markdown, save_str_as_txt_file)
-from tqdm import tqdm
 
-MODEL_NAME = "gpt-4o"
-from dotenv import load_dotenv
-
+MODEL_NAME = "gpt-4-turbo"
 load_dotenv()
 
 

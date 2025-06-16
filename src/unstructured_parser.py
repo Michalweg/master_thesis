@@ -3,12 +3,13 @@ from pathlib import Path
 
 import pandas as pd
 from langchain.prompts import PromptTemplate
+from tqdm import tqdm
+from unstructured.partition.pdf import partition_pdf
+
 from src.llm_parser import send_request_to_the_model_with_ollama
 from src.utils import (create_dir_if_not_exists, extract_tables_from_markdown,
                        save_data_to_json_file, save_dict_to_json,
                        saving_list_of_dfs, set_env)
-from tqdm import tqdm
-from unstructured.partition.pdf import partition_pdf
 
 os.environ["OCR_AGENT"] = 'tesseract'
 

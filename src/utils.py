@@ -3,13 +3,14 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from typing import Union
 
 import Levenshtein
 import pandas as pd
 import tiktoken
 from dotenv import load_dotenv
+
 from src.logger import logger
-from typing import Union
 
 
 def set_env():

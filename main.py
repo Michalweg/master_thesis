@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -6,19 +7,11 @@ from tqdm import tqdm
 from src.llm_parser import parse_markdown_sections_to_extract_tables_using_llm
 from src.logger import logger
 from src.marker_parser import parse_pdf_with_marker
-from src.parser import (
-    extract_pdf_sections_content,
-    parse_pdf_with_llama_parse,
-    parse_pdf_with_tabula,
-    parse_pdf_with_pdf_plumber
-)
-from src.utils import (
-    extract_tables_from_markdown,
-    save_data_to_json_file,
-    saving_list_of_dfs,
-    set_env, create_dir_if_not_exists,
-)
-import logging
+from src.parser import (extract_pdf_sections_content,
+                        parse_pdf_with_llama_parse, parse_pdf_with_pdf_plumber,
+                        parse_pdf_with_tabula)
+from src.utils import (create_dir_if_not_exists, extract_tables_from_markdown,
+                       save_data_to_json_file, saving_list_of_dfs, set_env)
 
 # Suppress warnings from font handling
 logging.getLogger("pdfminer").setLevel(logging.ERROR)

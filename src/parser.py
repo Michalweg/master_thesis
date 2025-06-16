@@ -8,11 +8,13 @@ import pdfplumber
 import tabula
 from llama_parse import LlamaParse
 from PyPDF2 import PdfReader
+from tqdm import tqdm
+
 from src.logger import logger
 from src.utils import (create_dir_if_not_exists, find_closest_string,
+                       get_unique_values_with_the_same_order,
                        read_markdown_file_content, run_bash_command,
-                       save_str_as_markdown, get_unique_values_with_the_same_order)
-from tqdm import tqdm
+                       save_str_as_markdown)
 
 
 def parse_pdf_with_tabula(pdf_file_path: str | Path) -> list[pd.DataFrame]:

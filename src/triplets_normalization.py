@@ -6,13 +6,15 @@ import pandas as pd
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
+from tqdm import tqdm
 
+from src.llm_parser import send_request_to_the_model_with_ollama
 from src.openai_client import get_openai_model_response
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
-from src.llm_parser import send_request_to_the_model_with_ollama
-MODEL_NAME = "gpt-4o"
-from src.logger import logger
 
+MODEL_NAME = "gpt-4o"
+
+from src.logger import logger
 
 normalization_prompt = \
 """
@@ -35,11 +37,14 @@ def combine_extracted_triplets_dir_into_file(extracted_triplets_dir: str) -> dic
 
     if Path(extracted_triplets_dir).is_dir():
         for paper in Path(extracted_triplets_dir).iterdir():
-            papers_triplets = []
-            for extracted_triplet_file_path in Path(paper).iterdir():
-                extracted_triplets = read_json(extracted_triplet_file_path)
-                papers_triplets += extracted_triplets
-            combined_triplets_dict.update({paper.name: papers_triplets})
+            if paper.is_dir():
+                papers_triplets = []
+                for extracted_triplet_file_path in paper.iterdir():
+
+                    # for extracted_triplet_file_path in Path(paper).iterdir():
+                    extracted_triplets = read_json(extracted_triplet_file_path)
+                    papers_triplets += extracted_triplets
+                combined_triplets_dict.update({paper.name: papers_triplets})
 
     return combined_triplets_dict
 
@@ -56,7 +61,14 @@ def main(path_to_extracted_triplets: str, true_dataset_path: str, output_dir_pat
             labels_dict['Dataset'].add(item['Dataset'])
             labels_dict['Metric'].add(item['Metric'])
 
-    for paper_name in all_extracted_triplets_per_paper:
+    already_processed_paper_names = [x.name for x in Path(output_dir_path).iterdir()]
+    for paper_name in tqdm(all_extracted_triplets_per_paper):
+
+        if paper_name in already_processed_paper_names:
+            logger.warning(f"The analyzed file was already processed: {paper_name}")
+            continue
+
+        print(f"Analyzed paper name: {paper_name}")
         output_paper_path = os.path.join(output_dir_path, paper_name)
         create_dir_if_not_exists(Path(output_paper_path))
 
@@ -102,8 +114,11 @@ def main(path_to_extracted_triplets: str, true_dataset_path: str, output_dir_pat
 
 
 if __name__ == "__main__":
-    normalization_output_dir = "triplets_normalization"
-    extracted_triplets_dir_path = "triplets_to_normalize_test"
+    normalization_output_dir = "triplets_normalization_all_leaderboards_papers_gpt-4-turbo"
+    create_dir_if_not_exists(Path(normalization_output_dir))
+    extracted_triplets_dir_path = "triplets_extraction/from_entire_document_refined_prompt_gpt-4-turbo"
+    create_dir_if_not_exists(Path(extracted_triplets_dir_path))
+
     true_dataset_path = "leaderboard-generation/tdm_annotations.json"
     normalized_triplets = main(extracted_triplets_dir_path, true_dataset_path, normalization_output_dir)
     save_dict_to_json(normalized_triplets, os.path.join(normalization_output_dir, 'normalized_triplets.json'))

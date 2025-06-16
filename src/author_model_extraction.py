@@ -4,18 +4,19 @@ from pathlib import Path
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
+from tqdm import tqdm
+
 from src.llm_parser import (parse_model_response,
                             send_request_to_the_model_with_ollama)
 from src.logger import logger
+from src.marker_parser import parse_pdf_with_marker
 from src.openai_client import get_openai_model_response
 from src.parser import extract_pdf_sections_content
 from src.utils import (create_dir_if_not_exists, read_json,
                        read_markdown_file_content,
                        remove_table_data_from_markdown, save_data_to_json_file,
-                       save_str_as_markdown, save_str_as_txt_file, save_dict_to_json)
-from tqdm import tqdm
-from src.marker_parser import parse_pdf_with_marker
-
+                       save_dict_to_json, save_str_as_markdown,
+                       save_str_as_txt_file)
 
 MODEL_NAME = "gpt-4o"
 

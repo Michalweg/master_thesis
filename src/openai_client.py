@@ -1,9 +1,13 @@
+"""
+In this file the openai client code is put and also extraction of triplets from entire FILE
+"""
 from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
 from openai.types.beta.threads.message_create_params import (
     Attachment, AttachmentToolFileSearch)
+from pydantic import BaseModel
 from PyPDF2 import PdfReader, PdfWriter
 from tqdm import tqdm
 
@@ -18,11 +22,12 @@ load_dotenv()
 from src.utils import count_tokens_in_prompt
 
 MAXIMUM_MO_TOKENS_PER_PROMPT = 10_000
+MODEL_NAME =  "gpt-4-turbo"
 
 client = OpenAI(
 )
 
-def get_openai_model_response(prompt: str, model_name: str = "gpt-4o"):
+def get_openai_model_response(prompt: str, model_name: str = "gpt-4o", system_prompt: str=""):
     no_of_token_in_prompt = count_tokens_in_prompt(prompt, model_name)
     if no_of_token_in_prompt > MAXIMUM_MO_TOKENS_PER_PROMPT:
         print(f"The prompt you are about to send is too large: {no_of_token_in_prompt}")
@@ -32,7 +37,7 @@ def get_openai_model_response(prompt: str, model_name: str = "gpt-4o"):
         response = client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "You are a helpful assistant."},  # System message to set behavior
+                {"role": "system", "content": "You are a helpful assistant." if not system_prompt else system_prompt},  # System message to set behavior
                 {"role": "user", "content": prompt}  # User's prompt
             ],
             temperature=0,  # Adjust for creativity (0 = deterministic, 1 = very creative)
@@ -43,12 +48,36 @@ def get_openai_model_response(prompt: str, model_name: str = "gpt-4o"):
     except Exception as e:
         return f"An error occurred: {e}"
 
+def get_openai_model_structured_response(prompt: str, pydantic_object, model_name: str = "gpt-4o", system_prompt="") -> BaseModel:
+    no_of_token_in_prompt = count_tokens_in_prompt(prompt, model_name)
+    if no_of_token_in_prompt > MAXIMUM_MO_TOKENS_PER_PROMPT:
+        print(f"The prompt you are about to send is too large: {no_of_token_in_prompt}")
+        raise ValueError
+    try:
+        client = OpenAI(
+        )
+        response = client.responses.parse(
+            model=model_name,
+            input=[
+                {
+                    "role": "system",
+                    "content": system_prompt if system_prompt else "You are a helpful assistant.",
+                },
+                {"role": "user", "content":prompt},
+            ],
+            text_format=pydantic_object,
+        )
+        return response
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        raise ValueError
+
 def get_openai_model_response_based_on_the_whole_document(model_name: str,
                                                           file_path: str):
     file = client.files.create(file=open(file_path, "rb"), purpose="assistants")
 
     pdf_assistant = client.beta.assistants.create(
-        model="gpt-4o",
+        model=model_name,
         description="An assistant to extract the contents of PDF files.",
         tools=[{"type": "file_search"}],
         name="PDF assistant",
@@ -93,7 +122,7 @@ def get_openai_model_response_based_on_the_whole_document(model_name: str,
 if __name__ == "__main__":
     papers_dir = "leaderboard-generation-papers"
     papers_dir_list = list(Path(papers_dir).iterdir())
-    output_dir = 'triplets_extraction/from_entire_document_refined_prompt_gpt_4o'
+    output_dir = f'triplets_extraction/from_entire_document_refined_prompt_{MODEL_NAME}'
     create_dir_if_not_exists(Path(output_dir))
     already_processed_files = [paper_path.name for paper_path in Path(output_dir).iterdir()]
 
@@ -137,7 +166,7 @@ if __name__ == "__main__":
                 with open(temp_file_path, "wb") as temp_file:
                     output.write(temp_file)
                 # temp_file_path = temp_file.name  # Store the temp file path
-                model_response = get_openai_model_response_based_on_the_whole_document(model_name='gpt-4o', file_path=temp_file_path)
+                model_response = get_openai_model_response_based_on_the_whole_document(model_name=MODEL_NAME, file_path=temp_file_path)
                 if model_response:
                     try:
                         parsed_response = output_parser.parse(model_response)
