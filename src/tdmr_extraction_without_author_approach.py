@@ -427,14 +427,12 @@ if __name__ == "__main__":
     create_result_file: bool = True
     extracted_triplet_dir_path = "triplets_normalization_all_leaderboards_papers_gpt-4-turbo"
     tdmr_extraction_dir = f"tdmr_extraction/{MODEL_NAME}/with_updated_normalized_triplet_using_gpt-4-turbo"
-    # create_one_result_file_for_evaluation_purpose(Path(tdmr_extraction_dir))
 
     create_dir_if_not_exists(Path(tdmr_extraction_dir))
-    path_with_tables_captions = '/Users/Michal/Dokumenty_mac/MasterThesis/docling_tryout/results'
+    path_with_tables_captions = '/Users/Michal/Dokumenty_mac/MasterThesis/docling_tryout/results' # TODO replace this path to Yours
     # run_extending_context_experiment("extending_context_experiment/experiments_source_papers",
     #                                  path_with_tables_captions, extracted_triplet_dir_path, tdmr_extraction_dir)
 
-    # path_with_tables_captions = '/Users/Michal/Dokumenty_mac/MasterThesis/docling_tryout/results'
     papers_with_extracted_tables = list(Path(path_with_tables_captions).iterdir())  #### !!!! uncomment to run the whole experiment
 
     # papers_with_extracted_tables_just_names = ['1906.05012', '1811.09242', '1909.02188']
