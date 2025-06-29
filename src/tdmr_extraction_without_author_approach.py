@@ -26,9 +26,7 @@ class TdmrExtractionResponseSplit(BaseModel):
     dataset: str = Field(description="A dataset from the triplet for which result is obtained")
     result: str = Field(description="A result for given triplet (task, dataset, metric) extracted from the provided table")
 
-class TableDecisionResponse(BaseModel):
-    explanation: str = Field(description="An explanation of the decision of choosing the table to extract result for provided triplet")
-    decision: bool = Field(description="Whether the table contains result for given triplet")
+
 
 from prompts.tdmr_extraction_without_model import (
     TDMR_EXTRACTION_PROMPT_07_02, TDMR_EXTRACTION_PROMPT_WITH_PARAGRAPHS,
@@ -203,7 +201,6 @@ def create_one_result_file(output_dir: Path):
             if isinstance(result_dict, dict):
                 result_dict.update({"PaperName": paper_dir.name})
                 all_unique_papersInitial.add(paper_dir.name)
-                print(paper_dir.name)
                 result_keyword = 'Result' if 'Result' in result_dict else 'Results'
                 if result_keyword in result_dict:
                     stay_dict = {k: v for k, v in result_dict.items() if k != result_keyword}
@@ -280,20 +277,10 @@ def create_one_result_file_for_evaluation_purpose(output_dir: Path):
                         result_dict['Result'] = result_dict.pop('Results')
                         no_of_triplets_with_results_instead_of_results += 1
                     if result_keyword in result_dict:
-                        # stay_dict = {k: v for k, v in result_dict.items() if k != result_keyword}
-
                         if isinstance(result_dict[result_keyword], dict):
                             no_of_dicts_instead_of_lists += 1
                             logger.error(f"From the file: {paper_dir.name} we got dict instead of a list: {result_dict[result_keyword]}")
                             continue
-                            # new_dicts = []
-                            # for k, v in result_dict[result_keyword].items():
-                            #     new_result_dict = stay_dict.copy()
-                            #     new_result_dict.update({'Result': str(v)})
-                            #     new_dicts.append(new_result_dict)
-                            #
-                            # processed_dicts.extend(new_dicts)
-                            # papers_proceed_dicts.extend(new_dicts)
 
                         elif isinstance(result_dict[result_keyword], list): # The object associated with "Result" key is not a dict
                             if result_dict[result_keyword]:
