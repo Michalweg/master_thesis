@@ -11,6 +11,8 @@ from tqdm import tqdm
 from src.llm_parser import send_request_to_the_model_with_ollama
 from src.openai_client import get_openai_model_response
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
+from src.triplets_unification import normalize_strings_triplets, extract_unique_triplets_from_normalized_triplet_file, normalize_string
+
 
 MODEL_NAME = "gpt-4o"
 
@@ -38,18 +40,18 @@ def combine_extracted_triplets_dir_into_file(extracted_triplets_dir: str) -> dic
     if Path(extracted_triplets_dir).is_dir():
         for paper in Path(extracted_triplets_dir).iterdir():
             if paper.is_dir():
-                papers_triplets = []
-                for extracted_triplet_file_path in paper.iterdir():
-
-                    # for extracted_triplet_file_path in Path(paper).iterdir():
-                    extracted_triplets = read_json(extracted_triplet_file_path)
-                    papers_triplets += extracted_triplets
+                papers_triplets = read_json(Path(os.path.join(paper, "unique_triplets.json")))
                 combined_triplets_dict.update({paper.name: papers_triplets})
+                # papers_triplets = []
+                # for extracted_triplet_file_path in paper.iterdir():
+                #     extracted_triplets = read_json(extracted_triplet_file_path)
+                #     papers_triplets += extracted_triplets
+                # combined_triplets_dict.update({paper.name: papers_triplets})
 
     return combined_triplets_dict
 
 def main(path_to_extracted_triplets: str, true_dataset_path: str, output_dir_path: str) -> list[dict]:
-    all_extracted_triplets_per_paper = combine_extracted_triplets_dir_into_file(path_to_extracted_triplets)
+    all_extracted_triplets_per_paper = combine_extracted_triplets_dir_into_file(path_to_extracted_triplets) # read_json(Path(os.path.join(path_to_extracted_triplets, "unique_triplets.json")))
     true_dataset = read_json(Path(true_dataset_path))
 
     labels_dict = {'Task': set(), 'Dataset': set(), 'Metric': set()}
@@ -89,6 +91,7 @@ def main(path_to_extracted_triplets: str, true_dataset_path: str, output_dir_pat
 
                     if response.lower() != 'None'.lower():
                         print(response)
+                        response = normalize_string(response)
                         normalized_triplet[triplet_item] = response
 
                     else:
@@ -114,11 +117,13 @@ def main(path_to_extracted_triplets: str, true_dataset_path: str, output_dir_pat
 
 
 if __name__ == "__main__":
-    normalization_output_dir = "triplets_normalization_all_leaderboards_papers_gpt-4-turbo"
+    normalization_output_dir = "triplets_normalization_from_entire_document_refined_prompt_gpt-4-turbo_gemini"
     create_dir_if_not_exists(Path(normalization_output_dir))
-    extracted_triplets_dir_path = "triplets_extraction/from_entire_document_refined_prompt_gpt-4-turbo"
+    extracted_triplets_dir_path = "triplets_extraction/from_entire_document_refined_prompt_gpt-4-turbo_gemini"
     create_dir_if_not_exists(Path(extracted_triplets_dir_path))
 
     true_dataset_path = "leaderboard-generation/tdm_annotations.json"
     normalized_triplets = main(extracted_triplets_dir_path, true_dataset_path, normalization_output_dir)
-    save_dict_to_json(normalized_triplets, os.path.join(normalization_output_dir, 'normalized_triplets.json'))
+    normalized_strings_triplets = normalize_strings_triplets(normalized_triplets)
+    unique_triplets = extract_unique_triplets_from_normalized_triplet_file(normalized_strings_triplets)
+    save_dict_to_json(unique_triplets, os.path.join(normalization_output_dir, 'normalized_triplets.json'))
