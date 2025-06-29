@@ -19,7 +19,7 @@ from src.utils import (create_dir_if_not_exists, find_closest_string,
 
 def parse_pdf_with_tabula(pdf_file_path: str | Path) -> list[pd.DataFrame]:
     logger.info(f"Extracting tables from PDF: {pdf_file_path} with Tabula")
-    dfs = tabula.read_pdf(pdf_file_path, pages='all')
+    dfs = tabula.read_pdf(pdf_file_path, pages="all")
     return dfs
 
 
@@ -31,6 +31,7 @@ def parse_pdf_with_pdf_plumber(pdf_file_path: str | Path) -> list:
             # text = page.extract_text()
             # print(text)
     return tables
+
 
 def parse_pdf_with_py_pdf2(pdf_file_path: str | Path) -> dict[int, str]:
     reader = PdfReader(pdf_file_path)
@@ -50,18 +51,23 @@ def extract_pdf_section(section_name: str, markdown_file_path: str) -> str:
 
 
 def fix_sections_with_wrong_chars(
-    marker_markdown_file_path, extracted_sections, wrong_chars={"*"}) -> list[str]:
+    marker_markdown_file_path, extracted_sections, wrong_chars={"*"}
+) -> list[str]:
     file_content = read_markdown_file_content(marker_markdown_file_path)
     no_of_changes = 0
     for i, section in enumerate(extracted_sections):
-        section = re.sub(r'#', '', section)
+        section = re.sub(r"#", "", section)
         if set(section).intersection(wrong_chars):
             no_of_changes += 1
             correct_section = "".join(
                 [char for char in section if char not in wrong_chars]
             )
             file_content = file_content.replace(section, correct_section)
-            extracted_sections[i] = correct_section if not correct_section.startswith(" ") else correct_section[1:]
+            extracted_sections[i] = (
+                correct_section
+                if not correct_section.startswith(" ")
+                else correct_section[1:]
+            )
         elif section.startswith(" "):
             correct_section = section[1:]
             extracted_sections[i] = correct_section
@@ -87,11 +93,15 @@ def extract_pdf_sections_with_marker_metadata(marker_metadata_file: str) -> list
     elif "pdf_toc" in files_content:
         toc_component = files_content["pdf_toc"]
     else:
-        toc_component = files_content['table_of_contents']
+        toc_component = files_content["table_of_contents"]
     used = set()
     sections = [section["title"] for section in toc_component]
 
-    unique = [section for section in sections if section not in used and (used.add(section) or True)]
+    unique = [
+        section
+        for section in sections
+        if section not in used and (used.add(section) or True)
+    ]
     return unique
 
 
@@ -107,14 +117,19 @@ def combine_section_names(
     return section_names_with_correct_structure
 
 
-def extract_pdf_sections_content(marker_markdown_file_path: str, marker_markdown_metadata_file_path: str = '') -> dict[str, str]:
+def extract_pdf_sections_content(
+    marker_markdown_file_path: str, marker_markdown_metadata_file_path: str = ""
+) -> dict[str, str]:
     logger.info("Extracting PDF sections ...")
     pdf_sections_correct_names = extract_pdf_sections_with_markdown(
         marker_markdown_file_path=marker_markdown_file_path
     )
 
-    marker_metadata_file_path = marker_markdown_metadata_file_path if marker_markdown_metadata_file_path else  Path(marker_markdown_file_path).parent / (
-        Path(marker_markdown_file_path).stem + "_meta.json"
+    marker_metadata_file_path = (
+        marker_markdown_metadata_file_path
+        if marker_markdown_metadata_file_path
+        else Path(marker_markdown_file_path).parent
+        / (Path(marker_markdown_file_path).stem + "_meta.json")
     )
     pdf_sections = extract_pdf_sections_with_marker_metadata(
         str(marker_metadata_file_path)
@@ -125,34 +140,34 @@ def extract_pdf_sections_content(marker_markdown_file_path: str, marker_markdown
     combine_sections_names = fix_sections_with_wrong_chars(
         marker_markdown_file_path, combine_sections_names
     )
-    unique_combined_section_names = get_unique_values_with_the_same_order(combine_sections_names)
+    unique_combined_section_names = get_unique_values_with_the_same_order(
+        combine_sections_names
+    )
     pdf_section_contents = {}
     for i, section in enumerate(unique_combined_section_names[:-1]):
         try:
             section_text = extract_pdf_section(
-                        section, markdown_file_path=marker_markdown_file_path
-                    )
-            next_correct_section_name = find_closest_string(unique_combined_section_names[i+1], pdf_sections_correct_names)
-            if next_correct_section_name in section_text:
-                section_text = section_text[:section_text.find(next_correct_section_name)]
-            pdf_section_contents.update(
-                {
-                    section: section_text
-                }
+                section, markdown_file_path=marker_markdown_file_path
             )
+            next_correct_section_name = find_closest_string(
+                unique_combined_section_names[i + 1], pdf_sections_correct_names
+            )
+            if next_correct_section_name in section_text:
+                section_text = section_text[
+                    : section_text.find(next_correct_section_name)
+                ]
+            pdf_section_contents.update({section: section_text})
             if not section_text:
-                logger.warning(f"The provided section: {section} from the file: {marker_markdown_file_path} is empty!")
+                logger.warning(
+                    f"The provided section: {section} from the file: {marker_markdown_file_path} is empty!"
+                )
         except Exception as e:
             print(e)
     last_section = unique_combined_section_names[-1]
     section_text = extract_pdf_section(
         last_section, markdown_file_path=marker_markdown_file_path
     )
-    pdf_section_contents.update(
-        {
-            last_section: section_text
-        }
-    )
+    pdf_section_contents.update({last_section: section_text})
 
     logger.info("PDF sections extracted")
     return pdf_section_contents
@@ -170,7 +185,7 @@ def parse_pdf_with_llama_parse(
 
 
 if __name__ == "__main__":
-    dfs = parse_pdf_with_tabula("/Users/Michal/Dokumenty_mac/MasterThesis/master_thesis/papers/research_papers/2305.14336v3.pdf")
+    dfs = parse_pdf_with_tabula("/papers/research_papers/2305.14336v3.pdf")
     papers_dir = "papers/research_papers"
     experiment_dir = "parsing_experiments/29_10_2024_tabula_lattice_mode"
     papers_dir_list = list(Path(papers_dir).iterdir())

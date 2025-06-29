@@ -256,7 +256,6 @@ Part of a research paper:
 Assistant:
 """
 
-system_prompt_for_triplet_extraction_gpt4o = \
-"""
+system_prompt_for_triplet_extraction_gpt4o = """
 You are a helpful assistant. 
 """

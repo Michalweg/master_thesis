@@ -71,8 +71,7 @@ Here is the table caption:
 {table_caption}
 """
 
-TDMR_EXTRACTION_PROMPT_05_04 = \
-"""
+TDMR_EXTRACTION_PROMPT_05_04 = """
 You will be given a triplet (an information piece which is constructed from the Dataset, Metric and Task) and a table with the results alongside its caption. 
 Your task is to assign value to the extracted dataset, metric and task triplet based on the provided data in a table. 
 Please output an updated dictionary with this result (so final dictionary consists of dataset, metric, task and extracted result)

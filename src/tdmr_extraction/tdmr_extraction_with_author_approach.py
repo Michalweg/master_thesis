@@ -19,7 +19,10 @@ from src.utils import read_json
 
 
 class TdmrExtractionResponse(BaseModel):
-    tdmr_dict: dict = Field(description="An updated dictionary containing task, dataset, metric and metric value for an approach/model developed by authors of the paper.")
+    tdmr_dict: dict = Field(
+        description="An updated dictionary containing task, dataset, metric and metric value for an approach/model developed by authors of the paper."
+    )
+
 
 TDMR_EXTRACTION_PROMPT = """
 You will be given a triplet (an information piece which is constructed from the Dataset, Metric and task), an information about
@@ -50,7 +53,13 @@ Here are some guidelines:
 {format_instructions}
 """
 
-def main(extracted_triplet_path_dir: str, all_extracted_author_approach: set, extracted_tables_summary_file_path: str, tdmr_extraction_output_dir_path: str):
+
+def main(
+    extracted_triplet_path_dir: str,
+    all_extracted_author_approach: set,
+    extracted_tables_summary_file_path: str,
+    tdmr_extraction_output_dir_path: str,
+):
     output_list = []
     parser = JsonOutputParser(pydantc_object=TdmrExtractionResponse)
 
@@ -67,16 +76,27 @@ def main(extracted_triplet_path_dir: str, all_extracted_author_approach: set, ex
                 for triplet in triplet_set:
                     for table_object in extracted_tables_and_captions:
 
-                        csv_data = StringIO(table_object['data'])
+                        csv_data = StringIO(table_object["data"])
                         table = pd.read_csv(csv_data)
-                        table_caption = table_object['caption']
+                        table_caption = table_object["caption"]
 
-                        prompt = PromptTemplate(input_variables=['triplet', 'table', 'authors_model', 'table_caption'],
-                                                partial_variables={'format_instructions': parser.get_format_instructions()},
-                                                template=TDMR_EXTRACTION_PROMPT).format(triplet=triplet,
-                                                                                        table=table,
-                                                                                        authors_model=author_approach,
-                                                                                        table_caption=table_caption)
+                        prompt = PromptTemplate(
+                            input_variables=[
+                                "triplet",
+                                "table",
+                                "authors_model",
+                                "table_caption",
+                            ],
+                            partial_variables={
+                                "format_instructions": parser.get_format_instructions()
+                            },
+                            template=TDMR_EXTRACTION_PROMPT,
+                        ).format(
+                            triplet=triplet,
+                            table=table,
+                            authors_model=author_approach,
+                            table_caption=table_caption,
+                        )
                         response = get_openai_model_response(prompt)
                         logger.info(f"Raw response: {response}")
                         try:
@@ -89,19 +109,30 @@ def main(extracted_triplet_path_dir: str, all_extracted_author_approach: set, ex
                                         output_list.append(response)
                         except:
                             print(response)
-    save_dict_to_json(output_list, os.path.join(tdmr_extraction_output_dir_path, f'{Path(extracted_triplet_path_dir).name}_tdmr_extraction.json'))
+    save_dict_to_json(
+        output_list,
+        os.path.join(
+            tdmr_extraction_output_dir_path,
+            f"{Path(extracted_triplet_path_dir).name}_tdmr_extraction.json",
+        ),
+    )
 
 
-def define_all_unique_extracted_approaches_names(list_of_all_extracted_approaches_per_section: list[dict]) -> set:
+def define_all_unique_extracted_approaches_names(
+    list_of_all_extracted_approaches_per_section: list[dict],
+) -> set:
     all_extracted_authors_approach = set()
     for extracted_approach_dict in list_of_all_extracted_approaches_per_section:
         for section_name in extracted_approach_dict:
-            list_of_extracted_approaches_in_section = extracted_approach_dict[section_name]
+            list_of_extracted_approaches_in_section = extracted_approach_dict[
+                section_name
+            ]
             if list_of_extracted_approaches_in_section:
                 for extracted_approach in list_of_extracted_approaches_in_section:
                     all_extracted_authors_approach.add(extracted_approach)
 
     return all_extracted_authors_approach
+
 
 def create_one_result_file(output_dir: Path):
     processed_dicts = []
@@ -113,15 +144,17 @@ def create_one_result_file(output_dir: Path):
             if isinstance(result_dict, dict):
                 result_dict.update({"PaperName": paper_dir.stem.split("_")[0]})
                 all_unique_papersInitial.add(paper_dir.name)
-                result_keyword = 'Result' if 'Result' in result_dict else 'Results'
+                result_keyword = "Result" if "Result" in result_dict else "Results"
 
                 if result_keyword in result_dict:
-                    stay_dict = {k: v for k, v in result_dict.items() if k != result_keyword}
+                    stay_dict = {
+                        k: v for k, v in result_dict.items() if k != result_keyword
+                    }
                     if isinstance(result_dict[result_keyword], dict):
                         new_dicts = []
                         for k, v in result_dict[result_keyword].items():
                             new_result_dict = stay_dict.copy()
-                            new_result_dict.update({'Result': v})
+                            new_result_dict.update({"Result": v})
                             new_dicts.append(new_result_dict)
                         processed_dicts.extend(new_dicts)
 
@@ -132,24 +165,40 @@ def create_one_result_file(output_dir: Path):
                     processed_dicts.append(result_dict)
             else:
                 print(result_dict)
-    save_dict_to_json(processed_dicts, os.path.join(Path(output_dir).parent, 'tdmr_extraction_with_author_data_combined.json'))
+    save_dict_to_json(
+        processed_dicts,
+        os.path.join(
+            Path(output_dir).parent, "tdmr_extraction_with_author_data_combined.json"
+        ),
+    )
+
 
 if __name__ == "__main__":
     ### For each analyzed paper in the dir of the paper should be inputs and outputs that led to the given result
     # Specifying a dir with papers to analyze
-    author_model_approach_experiment_dir_path = "extending_results_extracton_with_author_approach"
-    papers_to_extract_dir_path = os.path.join(author_model_approach_experiment_dir_path, "papers")
-    list_of_posix_paths_for_papers_to_analyze = list(Path(papers_to_extract_dir_path).iterdir())
+    author_model_approach_experiment_dir_path = (
+        "extending_results_extracton_with_author_approach"
+    )
+    papers_to_extract_dir_path = os.path.join(
+        author_model_approach_experiment_dir_path, "papers"
+    )
+    list_of_posix_paths_for_papers_to_analyze = list(
+        Path(papers_to_extract_dir_path).iterdir()
+    )
 
     # Specifying specific dir where all triplets for all papers are defined
     extracted_normalized_triplet_dir_path = "triplets_normalization"
 
     # Specifying a dir with tables and captions
-    path_with_tables_captions = '/Users/Michal/Dokumenty_mac/MasterThesis/docling_tryout/results'
-
+    path_with_tables_captions = (
+        "/Users/Michal/Dokumenty_mac/MasterThesis/docling_tryout/results"
+    )
 
     # Setting up output dir
-    tdmr_extraction_output_dir = os.path.join(author_model_approach_experiment_dir_path, f"{MODEL_NAME}/with_author_model_approach")
+    tdmr_extraction_output_dir = os.path.join(
+        author_model_approach_experiment_dir_path,
+        f"{MODEL_NAME}/with_author_model_approach",
+    )
     create_one_result_file(Path(tdmr_extraction_output_dir))
     # create_dir_if_not_exists(Path(tdmr_extraction_output_dir))
     #
