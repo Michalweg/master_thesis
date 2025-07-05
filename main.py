@@ -4,12 +4,13 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from src.llm_parser import parse_markdown_sections_to_extract_tables_using_llm
 from src.logger import logger
-from src.marker_parser import parse_pdf_with_marker
-from src.parser import (extract_pdf_sections_content,
-                        parse_pdf_with_llama_parse, parse_pdf_with_pdf_plumber,
-                        parse_pdf_with_tabula)
+from src.parsers.llm_parser import \
+    parse_markdown_sections_to_extract_tables_using_llm
+from src.parsers.marker_parser import parse_pdf_with_marker
+from src.parsers.parser import (extract_pdf_sections_content,
+                                parse_pdf_with_pdf_plumber,
+                                parse_pdf_with_tabula)
 from src.utils import (create_dir_if_not_exists, extract_tables_from_markdown,
                        save_data_to_json_file, saving_list_of_dfs, set_env)
 
@@ -23,7 +24,7 @@ MODEL_NAME = "gpt-4o"
 if __name__ == "__main__":
 
     # papers_dir = "papers/research_papers"
-    papers_dir = 'various_tables_extraction_approaches_paper_dir'
+    papers_dir = "various_tables_extraction_approaches_paper_dir"
     experiment_dir = f"various_tables_extraction_approaches_summary_dir"
     create_dir_if_not_exists(Path(experiment_dir))
     papers_dir_list = list(Path(papers_dir).iterdir())
@@ -48,7 +49,6 @@ if __name__ == "__main__":
 
             # Parsing PDF with PDF plumber
             pdf_plumber_tables = parse_pdf_with_pdf_plumber(paper_path)
-
 
             paper_output_dir_path = Path(experiment_dir) / Path(paper_path).stem
             os.makedirs(paper_output_dir_path, exist_ok=True)
@@ -83,9 +83,13 @@ if __name__ == "__main__":
             )
             os.makedirs(pdf_plumber_tables_file_path, exist_ok=True)
             try:
-                saving_list_of_dfs(pdf_plumber_tables, Path(pdf_plumber_tables_file_path))
+                saving_list_of_dfs(
+                    pdf_plumber_tables, Path(pdf_plumber_tables_file_path)
+                )
             except Exception as e:
-                logger.error(f"PDF plumber extracted tables could not been saved, due to: {e}")
+                logger.error(
+                    f"PDF plumber extracted tables could not been saved, due to: {e}"
+                )
 
             # LLM extracted tables
             llm_tables_file_path = os.path.join(
