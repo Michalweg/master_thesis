@@ -6,7 +6,7 @@ from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from tqdm import tqdm
 
-from prompts.parser_prompts import triplets_extraction_prompt_gpt_4
+from prompts.triplets_extraction import triplets_extraction_prompt_gpt_4
 from src.logger import logger
 from src.openai_client import get_openai_model_response
 from src.parsers.llm_parser import (parse_model_response,

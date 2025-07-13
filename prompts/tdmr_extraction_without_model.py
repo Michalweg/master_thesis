@@ -230,3 +230,18 @@ Here are some guidelines:
 
 {format_instructions}
 """
+
+TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value = """
+You will be given a triplet (an information piece which is constructed from the Dataset, Metric and Task) and a table with the results alongside its caption. 
+Your task is to assign value to the extracted dataset, metric and task triplet based on the provided data in a table. 
+Please output an updated dictionary with this result (so final dictionary consists of dataset, metric, task and extracted result)
+Please note that table caption does not have it explicitly state the dataset for given triplet, in this case please assume
+that dataset matches and extract result for the task, metric and model approach. 
+
+Here are some guidelines: 
+1. Extract the result for only the best results obtained by proposed methods of the paper not baselines.
+2. If you cannot find the information about the result for specific triplet, output empty dict. 
+3. If you will find multiple results for given triplet, please extract SOTA (state of the art) result (the best one). 
+4. You **SHOULD** also process the result if needed, so it's valid numeric value, for example if the results values have signs such as "±", "/" or similar 
+please extract the main value. For example in case of "40±12" please extract 40. 
+"""

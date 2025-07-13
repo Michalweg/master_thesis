@@ -130,11 +130,11 @@ def main(
 
 if __name__ == "__main__":
     normalization_output_dir = (
-        "triplets_normalization_from_entire_document_refined_prompt_gpt-4-turbo_gemini"
+        "triplets_normalization/from_entire_document_refined_prompt_gpt-4-turbo_more_context_less_strict"
     )
     create_dir_if_not_exists(Path(normalization_output_dir))
     extracted_triplets_dir_path = (
-        "triplets_extraction/from_entire_document_refined_prompt_gpt-4-turbo_gemini"
+        "triplets_extraction/from_entire_document_refined_prompt_gpt-4-turbo_more_context_less_strict_prompt"
     )
     create_dir_if_not_exists(Path(extracted_triplets_dir_path))
 

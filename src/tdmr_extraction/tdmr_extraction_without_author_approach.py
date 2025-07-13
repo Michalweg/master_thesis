@@ -359,6 +359,9 @@ def create_one_result_file_for_evaluation_purpose(output_dir: Path):
                             result_dict[result_keyword], list
                         ):  # The object associated with "Result" key is not a dict
                             if result_dict[result_keyword]:
+                                if len(result_dict[result_keyword]) == 1:
+                                    valid_list_of_strings_with_results = result_dict[result_keyword][0].split(", ")
+                                    result_dict[result_keyword] = valid_list_of_strings_with_results
                                 try:
                                     paper_result_dict = {
                                         **result_dict,
@@ -446,7 +449,7 @@ def create_one_result_file_for_evaluation_purpose(output_dir: Path):
     save_dict_to_json(
         evaluation_result_dict,
         os.path.join(
-            output_dir, "processed_tdmr_extraction_test_papers_evaluation.json"
+            output_dir, "processed_tdmr_extraction_test_papers_evaluation_valid_results.json"
         ),
     )
 

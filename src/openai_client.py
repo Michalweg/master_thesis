@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from PyPDF2 import PdfReader, PdfWriter
 from tqdm import tqdm
 
-from prompts.triplets_extraction import triplets_extraction_prompt_gpt_4_turbo
+from prompts.triplets_extraction import triplets_extraction_prompt_gpt_4_turbo, triplets_extraction_prompt_gpt_4_turbo_more_context
 from src.triplets.triplets_unification import (
     extract_unique_triplets_from_normalized_triplet_file,
     normalize_strings_triplets)
@@ -106,7 +106,7 @@ def get_openai_model_response_based_on_the_whole_document(
     # Create thread
     thread = client.beta.threads.create()
 
-    prompt_without_file_id = triplets_extraction_prompt_gpt_4_turbo
+    prompt_without_file_id = triplets_extraction_prompt_gpt_4_turbo_more_context
 
     # Create assistant
     client.beta.threads.messages.create(
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     papers_dir = "leaderboard-generation-papers"
     papers_dir_list = list(Path(papers_dir).iterdir())
     output_dir = (
-        f"triplets_extraction/from_entire_document_refined_prompt_{MODEL_NAME}_gemini"
+        f"triplets_extraction/from_entire_document_refined_prompt_{MODEL_NAME}_more_context_less_strict_prompt"
     )
     create_dir_if_not_exists(Path(output_dir))
     already_processed_files = [
