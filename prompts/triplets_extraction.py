@@ -62,12 +62,10 @@ c. Metric:
 triplets_extraction_prompt_gpt_4_turbo_more_context = """
 You are an expert data analyst specializing in machine learning literature.
 You will be given a parts of research papers from the Machine Learning domain as an input
-Please extract different tuples including the name of the task addressed in the paper, utilized datasets and evaluation metrics and corresponding results. 
+Please extract different triplets including the name of the task addressed in the paper, utilized datasets and evaluation metrics. 
+Please focus on the items for which then results were obtained (for given task, on the defined dataset using metric)
 
-Your entire response will be a single JSON object, starting immediately with [ and ending with ].
 
-JSON Format:
-[{"Task": "Task name", "Dataset": "Dataset name", "Metric": "Metric name"}]
 
 Follow all instructions below precisely.
 
@@ -75,10 +73,14 @@ Follow all instructions below precisely.
 
 General Rules:
 
-Your response MUST begin immediately with the JSON array ([ or []) and contain NOTHING else. No pre-amble, no explanation, no closing remarks.
-Extract every unique combination of (Task, Dataset, Metric) found. If a single experiment uses multiple metrics (e.g., F1 and Recall), create a separate JSON object for each metric.
-Only output triplets where all three fields (Task, Dataset, Metric) are explicitly found and meet the criteria below. If any field is missing or invalid for a potential triplet, discard the entire triplet.
-If no valid triplets that satisfy all rules can be found, return an empty JSON array: [].
+1. Extract every unique combination of (Task, Dataset, Metric) found. If a single experiment uses multiple metrics (e.g., F1 and Recall), create a separate JSON object for each metric.
+2. Only output triplets where all three fields (Task, Dataset, Metric) are explicitly found and meet the criteria below. If any field is missing or invalid for a potential triplet, discard the entire triplet.
+3. If no valid triplets that satisfy all rules can be found, return an empty list []. Additionally, if not complete triplet was found, then **DO NOT** report, output only complete triplets.  
 
 </instructions>
+"""
+
+triplets_extraction_prompt_gpt_4o = """
+Here is the part of the research paper:
+{research_paper}
 """
