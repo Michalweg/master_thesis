@@ -128,10 +128,71 @@ def main(
     return normalized_triplets
 
 
+def calculate_exact_match_on_extracted_triplets(gold_data, normalized_output):
+    """
+
+    Args:
+        gold_data: A ground truth daa provided by the authors
+        normalized_output: A normalized output provided by the authors
+
+    Returns:
+
+    """
+    recall_scores = {}
+    recall_scores_given_list = {}
+    precision_scores = {}
+    precision_scores_given_list = {}
+    for paper in normalized_output:
+        exact_matches = 0
+        matches_within_list_of_extracted_values = 0
+        # unique_output_tdms = [dict(t) for t in {tuple(d.items()) for d in output_tdms[paper]}]
+        # for output_tdm in unique_output_tdms:
+        for output_tdm in normalized_output[paper]['normalized_output']:
+            found = False
+            for gold_tdm in gold_data[paper]['TDMs']:
+                if (output_tdm['Task'] == gold_tdm['Task']) and (output_tdm['Dataset'] == gold_tdm['Dataset']) and (output_tdm['Metric'] == gold_tdm['Metric']):
+                    exact_matches += 1
+                    found = True
+                if found:
+                    break
+
+        try:
+            recall_scores[paper] = exact_matches / len(gold_data[paper]['TDMs'])
+            recall_scores_given_list[paper] = matches_within_list_of_extracted_values / len(gold_data[paper]['TDMs'])
+        except KeyError:
+            recall_scores[paper] = 0.0
+            recall_scores_given_list[paper] = 0.0
+        if len(normalized_output[paper]['normalized_output']) != 0:
+            precision_scores[paper] = exact_matches / len(normalized_output[paper]['normalized_output'])
+            precision_scores_given_list[paper] = matches_within_list_of_extracted_values / len(normalized_output[paper]['normalized_output'])
+        else:
+            precision_scores[paper] = 0
+            precision_scores_given_list[paper] = 0
+    print(f"Overall recall score: {sum(recall_scores.values()) / len(recall_scores)}")
+    print(f"Overall precision score: {sum(precision_scores.values()) / len(precision_scores)}")
+    return recall_scores, precision_scores
+
+
+def create_triplets_in_evaluation_form(triplets_normalization_output_dir: str) -> dict:
+    triplets_in_correct_from = {}
+    for paper in Path(triplets_normalization_output_dir).iterdir():
+        paper_triplets_path = Path(os.path.join(str(paper), paper.name + ".json"))
+        if paper_triplets_path.exists():
+            papers_triplets = read_json(paper_triplets_path)
+            triplets_in_correct_from[paper.name + ".pdf"] = {"normalized_output": papers_triplets}
+        else:
+            print(paper_triplets_path)
+
+    return triplets_in_correct_from
+
+
 if __name__ == "__main__":
     normalization_output_dir = (
         "triplets_normalization/from_entire_document_refined_prompt_gpt-4-turbo_more_context_less_strict"
     )
+    current_triplets_evaluation_form = create_triplets_in_evaluation_form(normalization_output_dir)
+    ground_truth_triplets = read_json(Path("leaderboard-generation/tdm_annotations.json"))
+    recall_scores, precision_scores = calculate_exact_match_on_extracted_triplets(ground_truth_triplets, current_triplets_evaluation_form)
     create_dir_if_not_exists(Path(normalization_output_dir))
     extracted_triplets_dir_path = (
         "triplets_extraction/from_entire_document_refined_prompt_gpt-4-turbo_more_context_less_strict_prompt"
