@@ -35,7 +35,7 @@ class TdmrExtractionResponseSplit(BaseModel):
         description="A dataset from the triplet for which result is obtained"
     )
     result: str = Field(
-        description="A result for given triplet (task, dataset, metric) extracted from the provided table"
+        description="A result for given triplet (task, dataset, metric) extracted from the provided table. Output only the value!"
     )
 
 

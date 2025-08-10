@@ -60,10 +60,10 @@ c. Metric:
 
 
 triplets_extraction_prompt_gpt_4_turbo_more_context = """
-You are an expert data analyst specializing in machine learning literature.
+You are an expert data analyst specializing in machine learning literature and machine learning models benchmarking.
 You will be given a parts of research papers from the Machine Learning domain as an input
 Please extract different triplets including the name of the task addressed in the paper, utilized datasets and evaluation metrics. 
-Please focus on the items for which then results were obtained (for given task, on the defined dataset using metric)
+Please focus on the items for which then results were obtained (for given task, on the defined dataset using metric). 
 
 
 
@@ -74,13 +74,72 @@ Follow all instructions below precisely.
 General Rules:
 
 1. Extract every unique combination of (Task, Dataset, Metric) found. If a single experiment uses multiple metrics (e.g., F1 and Recall), create a separate JSON object for each metric.
-2. Only output triplets where all three fields (Task, Dataset, Metric) are explicitly found and meet the criteria below. If any field is missing or invalid for a potential triplet, discard the entire triplet.
-3. If no valid triplets that satisfy all rules can be found, return an empty list []. Additionally, if not complete triplet was found, then **DO NOT** report, output only complete triplets.  
-
+2. Only output triplets where all three fields (Task, Dataset, Metric) are explicitly found and meet the criteria below. If any field is missing or invalid for a potential triplet, discard the entire triplet. DO NOT add values such as "Unspecified" or "Unknown" just disregards the triplet. 
+3. If no valid triplets that satisfy all rules can be found, return an empty list []. Additionally, if not complete triplet was found, then **DO NOT** report, output only complete triplets. 
+4. Those triplets are then used to benchmark various ML approaches, so focus on extracting triplets with well known dataset (avoid adding triplets with dataset defined as "evaluation dataset") 
+5. If possible, extract the whole dataset name instead of just the abbreviation/its shortcut. 
 </instructions>
 """
 
 triplets_extraction_prompt_gpt_4o = """
 Here is the part of the research paper:
+{research_paper}
+"""
+
+openai_gpt_oss_120b_system_prompt = \
+"""
+You are a highly specialized AI assistant for scientific literature analysis. Your task is to act as a precision information extraction engine.
+
+You will be provided with a text CHUNK from a machine learning research paper. Your goal is to extract every complete (Task, Dataset, Metric) triplet that describes a benchmarked experimental result within that chunk.
+
+Follow all instructions below with extreme precision.
+
+<instructions>
+
+### 1. Definitions
+- **Task**: The specific machine learning problem being solved.
+  - Examples: "Image Classification", "Named Entity Recognition", "Machine Translation", "Object Detection".
+- **Dataset**: The specific, named dataset used for evaluation. If possible, please extract full dataset name (instead of the abbreviation)
+  - Examples: "ImageNet", "SQuAD 2.0", "WMT14 English-German", "COCO".
+- **Metric**: The quantitative metric used to report the result.
+  - Examples: "Accuracy", "F1-Score", "BLEU Score", "mAP (mean Average Precision)".
+
+### 2. Core Extraction Rules
+- **The All-or-Nothing Principle**: A triplet is ONLY valid if you can extract a specific, non-generic name for ALL THREE components (Task, Dataset, and Metric) from the text. If any one component is missing, ambiguous, or generic, you MUST discard the entire potential triplet.
+- **No Placeholders**: Do NOT use generic values like "unspecified", "unknown", "the evaluation set", "our dataset", or "a proprietary dataset". Only extract explicitly named entities.
+- **One Triplet per Metric**: If an experiment reports multiple metrics (e.g., Precision and Recall) for the same Task-Dataset pair, you MUST create a separate triplet for each metric.
+- **Expand Acronyms**: When possible, extract the full name of a dataset or metric if it is available in the text (e.g., extract "Stanford Question Answering Dataset" instead of just "SQuAD").
+
+### 3. Output Format
+- Your final output MUST be a valid JSON list of objects.
+- Each object in the list represents one valid triplet and must have the keys "task", "dataset", and "metric".
+- If no valid triplets that satisfy all the rules are found in the provided text chunk, you MUST return an empty list: `[]`.
+- Do not add any explanations, apologies, or text outside of the JSON list.
+
+</instructions>
+
+### Example of Perfect Output
+
+**Input Text Chunk:**
+"...we evaluate our model on the task of semantic segmentation. We use the PASCAL VOC 2012 dataset and report the mean Intersection over Union (mIoU). We also test on the Cityscapes dataset, achieving a 78.4% Accuracy..."
+
+**Your Required Output:**
+```json
+[
+  {
+    "task": "Semantic Segmentation",
+    "dataset": "PASCAL VOC 2012",
+    "metric": "mIoU"
+  },
+  {
+    "task": "Semantic Segmentation",
+    "dataset": "Cityscapes",
+    "metric": "Accuracy"
+  }
+]
+"""
+
+openai_gpt_oss_120b_user_prompt = """
+Here is the chunk of the research paper:
 {research_paper}
 """
