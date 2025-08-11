@@ -312,13 +312,14 @@ if __name__ == "__main__":
     output_dir = (
         f"triplets_extraction/from_entire_document_refined_prompt_{MODEL_NAME}_09_08_update"
     )
+    already_processed_files = [
+        paper_path.name for paper_path in Path(output_dir).iterdir()
+    ]
     for f in Path("research-papers-markdwons").iterdir():
-        if not f.stem in test_papers:
-            continue
 
-        if f.stem != "1809.08370":
+        if f.stem in already_processed_files:
+            print(f"File has been already processed: {f.name}")
             continue
-
         if f.suffix == ".md" and "read" not in f.stem.lower():
             dir_to_save_paper_results = os.path.join(output_dir, f.stem)
             create_dir_if_not_exists(Path(dir_to_save_paper_results))

@@ -59,8 +59,8 @@ def main(
 
     already_processed_paper_names = [x.name for x in Path(output_dir_path).iterdir()]
     for paper_name in tqdm(all_extracted_triplets_per_paper):
-        if paper_name not in BENCHMARK_TABLES:
-            continue
+        # if paper_name not in BENCHMARK_TABLES:
+        #     continue
         if paper_name in already_processed_paper_names:
             logger.warning(f"The analyzed file was already processed: {paper_name}")
             continue

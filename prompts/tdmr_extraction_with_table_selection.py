@@ -4,7 +4,7 @@ from a scientific papers. You will be given a triplet (a dictionary that contain
 result metric is obtained), Dataset (dataset on which specific benchmark was calculated on) and Metric (metric to assess
 the performance of developed approach). You will be also given a list of extracted tables from the scientific paper from which the triplet was extracted
 alongside table caption and table id. 
-Your task is to pick the optimal table from which the result value for a given triplet shouldbe extracted from. 
+Your task is to pick the optimal table from which the result value for a given triplet should be extracted from. 
 Please indicate the table_id and an explanation why this table should be used.
 """
 

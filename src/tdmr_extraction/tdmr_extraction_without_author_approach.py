@@ -5,7 +5,6 @@ from pathlib import Path
 import pandas as pd
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from pydantic import BaseModel, Field
 from tqdm import tqdm
 
 from src.logger import logger
@@ -14,30 +13,9 @@ from src.openai_client import (get_openai_model_response,
 from src.parsers.marker_parser import parse_pdf_with_marker
 from src.parsers.parser import extract_pdf_sections_content
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
+from src.tdmr_extraction_utils.data_models import TdmrExtractionResponseSplit, TdmrExtractionResponse
 
 MODEL_NAME = "gpt-4-turbo"
-
-
-class TdmrExtractionResponse(BaseModel):
-    tdmr_dict: dict = Field(
-        description="An updated dictionary containing task, dataset, metric and metric value."
-    )
-
-
-class TdmrExtractionResponseSplit(BaseModel):
-    task: str = Field(
-        description="A task from the triplet for which result is obtained"
-    )
-    metric: str = Field(
-        description="A metric from the triplet for which result is obtained"
-    )
-    dataset: str = Field(
-        description="A dataset from the triplet for which result is obtained"
-    )
-    result: str = Field(
-        description="A result for given triplet (task, dataset, metric) extracted from the provided table. Output only the value!"
-    )
-
 
 from prompts.tdmr_extraction_without_model import (
     TDMR_EXTRACTION_PROMPT_07_02, TDMR_EXTRACTION_PROMPT_WITH_PARAGRAPHS,

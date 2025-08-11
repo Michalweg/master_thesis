@@ -5,7 +5,6 @@ from pathlib import Path
 import pandas as pd
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from pydantic import BaseModel, Field
 from tqdm import tqdm
 
 from prompts.tdmr_extraction_with_table_selection import (
@@ -17,48 +16,29 @@ from prompts.tdmr_extraction_without_model import (
 
 from src.logger import logger
 from src.openai_client import (get_openai_model_response,
-                               get_openai_model_structured_response, get_llm_model_response)
+                               get_llm_model_response)
+
 from src.tdmr_extraction.tdmr_extraction_without_author_approach import (
-    TdmrExtractionResponseSplit, create_one_result_file,
-    create_one_result_file_for_evaluation_purpose)
+    create_one_result_file, create_one_result_file_for_evaluation_purpose)
+from src.tdmr_extraction_utils.data_models import (TdmrExtractionResponseSplit, PreparedTable,
+                                                   TableDecisionResponse, PREPARED_DICT_INTO_STR_TEMPLATE)
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
 from src.const import BENCHMARK_TABLES
 
 MODEL_NAME = "openai-gpt-oss-120b"
 
-class TableDecisionResponse(BaseModel):
-    explanation: str = Field(
-        description="An explanation of the decision of choosing the table to be used to extract metric value for given triplet."
-    )
-    table_id_to_extract_result_metric_from: int = Field(
-        description="A table id which should be used to extract vale metric for a iven triplet."
-    )
-
-
-class PreparedTablesDict(BaseModel):
-    table: str = Field(description="A table in a markdown format")
-    table_caption: str = Field(description="Table caption for the provided table")
-    table_id: int = Field(description="A table id of the provided table")
-
-
-PREPARED_DICT_INTO_STR_TEMPLATE = """
-Table_markdown: {table_markdown}
-Table_caption: {table_caption}
-Table_id: {table_id}
-"""
-
 
 def prepare_extracted_tables_for_experiment(
     extracted_tables_dict_object: list[dict],
-) -> list[PreparedTablesDict]:
+) -> list[PreparedTable]:
     prepared_dicts = []
     for i, table_object in enumerate(extracted_tables_dict_object):
         csv_data = StringIO(table_object["data"])
         table = pd.read_csv(csv_data)
         table_caption = table_object["caption"]
         table_id = i + 1
-        prepared_dict = PreparedTablesDict(
-            table=table.to_markdown(), table_caption=table_caption, table_id=table_id
+        prepared_dict = PreparedTable(
+            table=table.to_dict('records'), table_caption=table_caption, table_id=table_id
         )
         prepared_dicts.append(prepared_dict)
     return prepared_dicts
@@ -66,7 +46,7 @@ def prepare_extracted_tables_for_experiment(
 
 def pick_optimal_source_table_for_given_triplet(
     extracted_triplet: dict,
-    prepared_dicts: list[PreparedTablesDict],
+    prepared_dicts: list[PreparedTable],
     prompt_template: str,
     result_object: TableDecisionResponse,
     structured_output: bool = True,
@@ -93,18 +73,12 @@ def pick_optimal_source_table_for_given_triplet(
     return response
 
 
-def formate_prepared_dicts_into_str(prepared_dicts: list[PreparedTablesDict]) -> str:
+def formate_prepared_dicts_into_str(prepared_dicts: list[PreparedTable]) -> str:
     dicts_into_str = ""
 
     for prepared_dict in prepared_dicts:
-        df_loaded = pd.read_csv(
-            StringIO(prepared_dict.table),
-            sep="|",
-            skipinitialspace=True,
-            engine="python"
-        ).dropna(axis=1, how="all")  # remove empty columns from markdown padding
         dicts_into_str += PREPARED_DICT_INTO_STR_TEMPLATE.format(
-            table_markdown=df_loaded.head(5).to_markdown(),
+            table_markdown=prepared_dict.dataframe.head(20).to_markdown(),
             table_caption=prepared_dict.table_caption,
             table_id=prepared_dict.table_id,
         )
@@ -136,7 +110,7 @@ def prepare_prompt_for_table_choosing(
 
 def extract_result_from_given_table_for_triplet(
     triplet: dict,
-    table_wit_additional_data: PreparedTablesDict,
+    table_wit_additional_data: PreparedTable,
     system_prompt: str,
     prompt_template: str,
     result_object: TdmrExtractionResponseSplit,
@@ -148,18 +122,19 @@ def extract_result_from_given_table_for_triplet(
             template=prompt_template,
         ).format(
             triplet=triplet,
-            table=table_wit_additional_data.table,
+            table=table_wit_additional_data.dataframe.to_markdown(),
             table_caption=table_wit_additional_data.table_caption,
         )
         response = get_llm_model_response(
             prompt=prompt, pydantic_object_structured_output=result_object, system_prompt=system_prompt, model_name=MODEL_NAME
         )
+        logger.info(f"Response for assigning value to the triplet: {response}")
         if response:
             response = {
                 "Task": response.task,
                 "Dataset": response.dataset,
                 "Metric": response.metric,
-                "Result": response.result,
+                "Result": str(response.result),
             }
     else:
         parser = JsonOutputParser(pydantc_object=result_object)
@@ -264,7 +239,7 @@ if __name__ == "__main__":
     create_result_file: bool = True
     extracted_triplet_dir_path = "triplets_normalization/from_entire_document_refined_prompt_openai-gpt-oss-120b_09_08"
     tdmr_extraction_dir = (
-        f"tdmr_extraction/{MODEL_NAME}/from_chunk_by_chunk_openai-gpt-oss-120b_table_and_value_selection_10_08"
+        f"tdmr_extraction/{MODEL_NAME}/from_chunk_by_chunk_openai-gpt-oss-120b_table_and_value_selection_11_08"
     )
 
     create_dir_if_not_exists(Path(tdmr_extraction_dir))
@@ -276,8 +251,9 @@ if __name__ == "__main__":
         Path(path_with_tables_captions).iterdir()
     )  #### !!!! uncomment to run the whole experiment
 
-    papers_with_extracted_tables_just_names = BENCHMARK_TABLES
-    papers_with_extracted_tables = [Path(os.path.join(path_with_tables_captions, x)) for x in papers_with_extracted_tables_just_names]
+    # papers_with_extracted_tables_just_names = BENCHMARK_TABLES
+    # papers_with_extracted_tables = [Path(os.path.join(path_with_tables_captions, x)) for x in papers_with_extracted_tables_just_names]
+
     already_processed_files = [
         paper_path.name for paper_path in Path(tdmr_extraction_dir).iterdir()
     ]
