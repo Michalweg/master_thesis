@@ -278,30 +278,31 @@ if __name__ == "__main__":
     already_processed_files = [
         paper_path.name for paper_path in Path(tdmr_extraction_dir).iterdir()
     ]
+    create_one_result_file_for_evaluation_purpose(Path(tdmr_extraction_dir))
 
-    for paper_path in tqdm(papers_with_extracted_tables):
-        logger.info(f"Analyzed file: {paper_path}")
-        if Path(paper_path).is_dir():
-            if paper_path.name in already_processed_files:
-                print(f"File has been already processed: {paper_path.name}")
-                continue
-            paper_name_output_path = Path(f"{tdmr_extraction_dir}/{paper_path.name}")
-            create_dir_if_not_exists(paper_name_output_path)
-
-            extracted_triplet_path_dir = os.path.join(
-                extracted_triplet_dir_path, paper_path.name
-            )
-            if Path(extracted_triplet_path_dir).exists():
-                extracted_tables_with_captions = read_json(
-                    Path(os.path.join(paper_path, "result_dict.json"))
-                )
-                main(
-                    extracted_triplet_path_dir,
-                    extracted_tables_with_captions,
-                    paper_name_output_path,
-                )
-            else:
-                logger.error(f"This path is broken: {extracted_triplet_path_dir}")
+    # for paper_path in tqdm(papers_with_extracted_tables):
+    #     logger.info(f"Analyzed file: {paper_path}")
+    #     if Path(paper_path).is_dir():
+    #         if paper_path.name in already_processed_files:
+    #             print(f"File has been already processed: {paper_path.name}")
+    #             continue
+    #         paper_name_output_path = Path(f"{tdmr_extraction_dir}/{paper_path.name}")
+    #         create_dir_if_not_exists(paper_name_output_path)
+    #
+    #         extracted_triplet_path_dir = os.path.join(
+    #             extracted_triplet_dir_path, paper_path.name
+    #         )
+    #         if Path(extracted_triplet_path_dir).exists():
+    #             extracted_tables_with_captions = read_json(
+    #                 Path(os.path.join(paper_path, "result_dict.json"))
+    #             )
+    #             main(
+    #                 extracted_triplet_path_dir,
+    #                 extracted_tables_with_captions,
+    #                 paper_name_output_path,
+    #             )
+    #         else:
+    #             logger.error(f"This path is broken: {extracted_triplet_path_dir}")
 
     if create_result_file:
         create_one_result_file(Path(tdmr_extraction_dir))
