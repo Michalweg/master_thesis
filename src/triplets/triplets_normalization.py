@@ -10,11 +10,12 @@ from src.triplets.triplets_unification import (
     normalize_strings_triplets)
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
 from src.const import BENCHMARK_TABLES
-from prompts.triplets_normalization import normalization_user_prompt, normalization_system_prompt
+from prompts.triplets_normalization import normalization_user_prompt, normalization_system_prompt, normalization_system_prompt_gpt_4_tubo
 from pydantic import BaseModel, Field
 
 MODEL_NAME = "gpt-4-turbo"
-
+triplets_normalization_model_mapper = {"gpt-4-turbo": normalization_system_prompt_gpt_4_tubo,
+                                       "openai-gpt-oss-120b": normalization_user_prompt}
 from src.logger import logger
 
 class NormalizationOutput(BaseModel):
@@ -75,6 +76,8 @@ def main(
         normalized_triplets_per_paper = []
         extracted_triplets_per_paper = all_extracted_triplets_per_paper[paper_name]
 
+        model_system_prompt = triplets_normalization_model_mapper[MODEL_NAME]
+
         for extracted_triplet in extracted_triplets_per_paper:
 
             normalized_triplet = {}
@@ -84,7 +87,7 @@ def main(
                         data_item=extracted_triplet[triplet_item],
                         defined_list=labels_dict[triplet_item.capitalize()],
                     )
-                    response = get_llm_model_response(prompt=user_prompt, model_name=MODEL_NAME, system_prompt=normalization_system_prompt,
+                    response = get_llm_model_response(prompt=user_prompt, model_name=MODEL_NAME, system_prompt=model_system_prompt,
                                                       pydantic_object_structured_output=NormalizationOutput)
                     if isinstance(response, NormalizationOutput):
                         response = response.output_data_item

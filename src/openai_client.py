@@ -13,6 +13,8 @@ from openai.types.responses import ParsedResponse
 from pydantic import BaseModel, Field
 import os
 
+from transformers.models.auto.image_processing_auto import model_type
+
 from prompts.triplets_extraction import triplets_extraction_prompt_gpt_4_turbo, triplets_extraction_prompt_gpt_4_turbo_like_openai_gpt_oss, triplets_extraction_prompt_gpt_4o, openai_gpt_oss_120b_system_prompt, openai_gpt_oss_120b_user_prompt
 from src.triplets.triplets_unification import (
     extract_unique_triplets_from_normalized_triplet_file,
@@ -32,6 +34,9 @@ MAXIMUM_MO_TOKENS_PER_PROMPT = 10_000
 MODEL_NAME = "gpt-4-turbo"
 
 client = OpenAI()
+
+triplets_extraction_model_mapper = {"gpt-4-turbo": triplets_extraction_prompt_gpt_4_turbo_like_openai_gpt_oss,
+                                    "openai-gpt-oss-120b": openai_gpt_oss_120b_system_prompt}
 
 class TooManyTokensError(Exception):
     """Raised when the prompt exceeds the maximum allowed token count."""
@@ -330,6 +335,7 @@ if __name__ == "__main__":
     already_processed_files = [
         paper_path.name for paper_path in Path(output_dir).iterdir()
     ]
+    model_system_prompt = triplets_extraction_model_mapper[MODEL_NAME]
     for f in Path("research-papers-markdwons").iterdir():
 
         if f.stem in already_processed_files:
@@ -349,7 +355,7 @@ if __name__ == "__main__":
             for i in range(0, len(file_content), chunk_size):
                 chunk = file_content[i:i + chunk_size]
                 model_response = get_llm_model_response(prompt=openai_gpt_oss_120b_user_prompt.format(research_paper=chunk),
-                                                        model_name=MODEL_NAME, system_prompt=triplets_extraction_prompt_gpt_4_turbo_like_openai_gpt_oss,
+                                                        model_name=MODEL_NAME, system_prompt=model_system_prompt,
                                                         pydantic_object_structured_output=ExtractedTriplets)
                 if model_response:
 
