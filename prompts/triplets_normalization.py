@@ -9,6 +9,13 @@ If the provided list already contains this data item in different name, please p
 3. Additionally, please make sure that when the data item already exists you MUST provide the value from the defined list, not the original data item.
 4. DO NOT PROVIDE ANY EXPLANATION!
 </instructions>
+
+Return the output in the following JSON format:
+```json
+{
+"output_data_item": "output data item from the provided data items list",
+}
+'''
 """
 
 normalization_user_prompt = """

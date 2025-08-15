@@ -11,6 +11,7 @@ import tiktoken
 from dotenv import load_dotenv
 
 from src.logger import logger
+import requests
 
 
 def set_env():
@@ -199,3 +200,21 @@ def get_unique_values_with_the_same_order(data: list) -> list:
         if element not in used and (used.add(element) or True)
     ]
     return unique
+
+
+def download_pdf(url, filename):
+    """
+    Download a PDF from a given URL and save it with the specified filename.
+
+    Args:
+        url (str): The URL of the PDF to download.
+        filename (str): The local filename to save the PDF as.
+    """
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an error for bad status codes
+        with open(filename, "wb") as f:
+            f.write(response.content)
+        print(f"Downloaded PDF as '{filename}'")
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to download PDF: {e}")
