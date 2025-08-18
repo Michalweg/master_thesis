@@ -7,11 +7,11 @@ from typing import Union
 
 import Levenshtein
 import pandas as pd
+import requests
 import tiktoken
 from dotenv import load_dotenv
 
 from src.logger import logger
-import requests
 
 
 def set_env():
@@ -125,6 +125,7 @@ def extract_tables_from_markdown(md_file_path: str) -> list[pd.DataFrame]:
             rows[i] = [re.sub(r"(?<=\d),(?=\d)", "", cell.strip()) for cell in row]
         try:
             df = pd.DataFrame(rows, columns=header)
+            df.columns = [col.strip() for col in df.columns]
             dataframes.append(df)
         except:
             logger.error("")
