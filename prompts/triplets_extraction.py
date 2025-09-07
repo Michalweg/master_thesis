@@ -165,7 +165,7 @@ Follow all instructions below with extreme precision.
 
 ### 3. Output Format
 - Your final output MUST be a valid JSON list of objects.
-- Each object in the list represents one valid triplet and must have the keys "task", "dataset", and "metric".
+- Each object in the list represents one valid triplet and must have the keys  "Task", "Dataset" and "Metric".
 - If no valid triplets that satisfy all the rules are found in the provided text chunk, you MUST return an empty list: `[]`.
 - Do not add any explanations, apologies, or text outside of the JSON list.
 
@@ -195,4 +195,26 @@ Follow all instructions below with extreme precision.
 openai_gpt_oss_120b_user_prompt = """
 Here is the chunk of the research paper:
 {research_paper}
+"""
+
+triplets_extraction_notebook_lm = """
+You are a highly specialized AI assistant for scientific literature analysis. Your task is to act as a precision information extraction engine.
+You will be provided with machine learning research papers. Your goal is to extract every complete (Task, Dataset, Metric) triplets that describes a benchmarked experimental result within that paper as well as the paper name from which this triplet was extracted.
+You MUST follow instructions below!
+<instructions>
+### 1. Definitions
+- **Task**: The specific machine learning problem being solved.
+  - Examples: "Image Classification", "Named Entity Recognition", "Machine Translation", "Object Detection".
+- **Dataset**: The specific, named dataset used for evaluation. If possible, please extract full dataset name (instead of the abbreviation)
+  - Examples: "ImageNet", "SQuAD 2.0", "WMT14 English-German", "COCO".
+- **Metric**: The quantitative metric used to report the result.
+  - Examples: "Accuracy", "F1-Score", "BLEU Score", "mAP (mean Average Precision)".
+- **PaperName**: The file name from which the triplet was extracted  
+### 2. Core Extraction Rules
+- **The All-or-Nothing Principle**: A triplet is ONLY valid if you can extract a specific, non-generic name for ALL THREE components (Task, Dataset, and Metric) from the text. If any one component is missing, ambiguous, or generic, you MUST discard the entire potential triplet.
+- **No Placeholders**: Do NOT use generic values like "unspecified", "unknown", "the evaluation set", "our dataset", or "a proprietary dataset". Only extract explicitly named entities.
+### 3. Output Format
+- Your final output MUST be a valid JSON list of objects.
+- Each object in the list represents one valid triplet and must have the keys "Task", "Dataset", "Metric" and "PaperName".
+</instructions>
 """

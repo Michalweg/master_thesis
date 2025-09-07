@@ -11,7 +11,31 @@ from selenium.webdriver.chrome.options import Options
 
 from src.logger import logger
 from src.utils import (create_dir_if_not_exists, download_pdf,
-                       extract_tables_from_markdown, save_dict_to_json)
+                       extract_tables_from_markdown, save_dict_to_json, read_json)
+from pydantic import BaseModel, Field
+
+
+class ExtendedTuple(BaseModel):
+    Task: str = Field(
+        description="A task from the triplet for which result is obtained"
+    )
+    Metric: str = Field(
+        description="A metric from the triplet for which result is obtained"
+    )
+    Dataset: str = Field(
+        description="A dataset from the triplet for which result is obtained"
+    )
+    Result: float = Field(
+        description="A result for given triplet (task, dataset, metric) extracted from the provided table. Output only the value!"
+    )
+    Model: str = Field(
+        description="A model that obtained given result for the specific metric on the given task. "
+    )
+
+
+class GroundTruthTuple(BaseModel):
+    PaperUrl: str
+    TDMs: list[dict] # ExtendTuple.model_dumpy() structure
 
 
 def setup():
@@ -116,17 +140,46 @@ def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: st
         tables_results.update(result)
     return tables_results
 
+
+def create_result_dict_in_correct_format(result: dict) -> dict:
+    correct_result = {}
+    for paper_name in result.keys():
+        if "TDMs" in result[paper_name]:
+            return result
+        if not paper_name.endswith(".pdf"):
+            correct_result[paper_name + ".pdf"] = {"PaperURL": "",
+                                          "TDMs": result[paper_name]}
+        else:
+            correct_result[paper_name] = {"PaperURL": "",
+                                         "TDMs": result[paper_name]}
+    return correct_result
+
+def add_hardcoded_task_to_result_dict(result: dict, hardcoded_task_name: str = "question answering") -> dict:
+    for paper_name in result.keys():
+        for i, papers_tdm in enumerate(result[paper_name]["TDMs"]):
+            result[paper_name]["TDMs"][i]["Task"] = hardcoded_task_name
+    return result
+
+
 if __name__ == "__main__":
     columns_to_drop = ["Year", "Language", "Reported by", "id"]
     known_metrics = ["F1", "Precision", "Recall", "Hits@1", "Hits@10", "Precision@1", "MRR", "Hits@5"]
     custom_dataset_papers_dir = "custom_dataset_papers"
 
+    for paper in Path(custom_dataset_papers_dir).iterdir():
+        if paper.is_dir():
+            result_file_path = paper.joinpath("result.json")
+            result_dict = read_json(result_file_path)
+            correct_result_dict = create_result_dict_in_correct_format(result_dict)
+            correct_result_dict = add_hardcoded_task_to_result_dict(correct_result_dict)
+            save_dict_to_json(correct_result_dict, result_file_path)
 
     datasets_for_markdown = ["TimeQuestions - Oridinal", "TimeQuestions - Temporal Answer", "Mintaka"]
     for dataset in datasets_for_markdown:
         markdown_file = os.path.join(custom_dataset_papers_dir, dataset, dataset + ".md")
         preprocessed_dict = preprocess_md_file_from_repository(markdown_file, dataset_name=dataset, columns_to_drop=columns_to_drop, known_metrics=known_metrics)
-        save_dict_to_json(preprocessed_dict, Path(markdown_file).with_suffix(".json"))
+        result = create_result_dict_in_correct_format(preprocessed_dict)
+        save_dict_to_json(result, Path(markdown_file).with_suffix(".json"))
 
 
     manual_work_needed = ["Compositional Wikidata Questions"]
@@ -176,6 +229,7 @@ if __name__ == "__main__":
                        .to_dict(orient="records"))
                 .to_dict()
             )
+            result = create_result_dict_in_correct_format(result)
             save_dict_to_json(result, os.path.join(dataset_papers_dir, "result.json"))
 
         else:

@@ -5,7 +5,6 @@ In this file the openai client code is put and also extraction of triplets from 
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain.chains.question_answering.map_rerank_prompt import output_parser
 from openai import OpenAI
 from openai.types.beta.threads.message_create_params import (
     Attachment, AttachmentToolFileSearch)
@@ -13,7 +12,6 @@ from openai.types.responses import ParsedResponse
 from pydantic import BaseModel, Field
 import os
 
-from transformers.models.auto.image_processing_auto import model_type
 
 from prompts.triplets_extraction import triplets_extraction_prompt_gpt_4_turbo, triplets_extraction_prompt_gpt_4_turbo_like_openai_gpt_oss, triplets_extraction_prompt_gpt_4o, openai_gpt_oss_120b_system_prompt, openai_gpt_oss_120b_user_prompt
 from src.triplets.triplets_unification import (
@@ -31,7 +29,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from src.const import OPENAI_API_MODELS
 
 MAXIMUM_MO_TOKENS_PER_PROMPT = 10_000
-MODEL_NAME = "gpt-4-turbo"
+MODEL_NAME = "openai-gpt-oss-120b"
 
 client = OpenAI()
 

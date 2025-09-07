@@ -172,7 +172,7 @@ def save_str_as_txt_file(txt_file_path, str_content) -> None:
         txt_file.write(str_content)
 
 
-def read_json(json_file_path: Path) -> Union[dict | list[dict]]:
+def read_json(json_file_path: Union[Path|str]) -> Union[dict | list[dict]]:
     if Path(json_file_path).exists():
         with open(json_file_path, "r") as json_file:
             return json.load(json_file)
@@ -219,3 +219,21 @@ def download_pdf(url, filename):
         print(f"Downloaded PDF as '{filename}'")
     except requests.exceptions.RequestException as e:
         print(f"Failed to download PDF: {e}")
+
+
+if __name__ == "__main__":
+    result_fle_nam = "result-notebook-lm.json"
+    dir_path = "custom_dataset_papers"
+    tasks_set = set()
+    for dataset_name in Path(dir_path).iterdir():
+        if dataset_name.is_dir():
+            file_path = dataset_name.joinpath(result_fle_nam)
+            try:
+                result = read_json(file_path)
+            except:
+                continue
+
+            for item in result:
+                tasks_set.add(item["Task"])
+
+    print(tasks_set)
