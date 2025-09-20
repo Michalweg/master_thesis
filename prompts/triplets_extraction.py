@@ -203,7 +203,7 @@ You will be provided with machine learning research papers. Your goal is to extr
 You MUST follow instructions below!
 <instructions>
 ### 1. Definitions
-- **Task**: The specific machine learning problem being solved.
+- **Task**: The specific machine learning problem being solved.  Do not be over specific, focus rather on main task (for example output "question Answering") rather than question answering on specific questions). 
   - Examples: "Image Classification", "Named Entity Recognition", "Machine Translation", "Object Detection".
 - **Dataset**: The specific, named dataset used for evaluation. If possible, please extract full dataset name (instead of the abbreviation)
   - Examples: "ImageNet", "SQuAD 2.0", "WMT14 English-German", "COCO".
