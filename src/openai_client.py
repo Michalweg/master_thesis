@@ -12,7 +12,8 @@ from openai.types.responses import ParsedResponse
 from pydantic import BaseModel, Field
 import os
 
-from prompts.triplets_extraction import triplets_extraction_prompt_gpt_4_turbo, triplets_extraction_prompt_gpt_4_turbo_more_context, triplets_extraction_prompt_gpt_4o, openai_gpt_oss_120b_system_prompt, openai_gpt_oss_120b_user_prompt
+
+from prompts.triplets_extraction import triplets_extraction_prompt_gpt_4_turbo, triplets_extraction_prompt_gpt_4_turbo_like_openai_gpt_oss, triplets_extraction_prompt_gpt_4o, openai_gpt_oss_120b_system_prompt, openai_gpt_oss_120b_user_prompt
 from src.triplets.triplets_unification import (
     extract_unique_triplets_from_normalized_triplet_file,
     normalize_strings_triplets)
@@ -23,12 +24,17 @@ load_dotenv()
 from src.logger import logger
 from src.utils import count_tokens_in_prompt
 from typing import Union, List
+from langchain_core.output_parsers import JsonOutputParser
+
 from src.const import OPENAI_API_MODELS
 
 MAXIMUM_MO_TOKENS_PER_PROMPT = 10_000
 MODEL_NAME = "openai-gpt-oss-120b"
 
 client = OpenAI()
+
+triplets_extraction_model_mapper = {"gpt-4-turbo": triplets_extraction_prompt_gpt_4_turbo_like_openai_gpt_oss,
+                                    "openai-gpt-oss-120b": openai_gpt_oss_120b_system_prompt}
 
 class TooManyTokensError(Exception):
     """Raised when the prompt exceeds the maximum allowed token count."""
@@ -89,7 +95,18 @@ def get_open_model_response(prompt: str, model_name: str, system_prompt: str, py
 
 def get_llm_model_response(prompt: str, model_name: str, system_prompt: str = "", pydantic_object_structured_output: type[BaseModel] = None) -> Union[str, type[BaseModel]]:
     if model_name in OPENAI_API_MODELS:
-        return get_openai_model_response(prompt, model_name, system_prompt, pydantic_object_structured_output)
+        if pydantic_object_structured_output and model_name != "gpt-4-turbo":
+            return get_openai_model_structured_response(prompt, pydantic_object_structured_output, model_name, system_prompt)
+        else:
+            raw_response =  get_openai_model_response(prompt, model_name, system_prompt, pydantic_object_structured_output)
+            logger.info(f"Raw response from {model_name}: {raw_response}")
+            if pydantic_object_structured_output:
+                output_parser = JsonOutputParser(pydantic_object=pydantic_object_structured_output)
+            else:
+                output_parser = JsonOutputParser()
+            parsed_response = output_parser.parse(raw_response)
+            logger.info(f"Parsed response from {model_name}: {parsed_response}")
+            return parsed_response
     else:
         return get_open_model_response(prompt, model_name, system_prompt, pydantic_object_structured_output)
 
@@ -171,7 +188,7 @@ def get_openai_model_response_based_on_the_whole_document(
     # Create thread
     thread = client.beta.threads.create()
 
-    prompt_without_file_id = triplets_extraction_prompt_gpt_4_turbo_more_context
+    prompt_without_file_id = triplets_extraction_prompt_gpt_4_turbo_like_openai_gpt_oss
 
     # Create assistant
     client.beta.threads.messages.create(
@@ -307,19 +324,25 @@ if __name__ == "__main__":
     #                 )
     #             os.remove(temp_file_path)
     #     combine_and_unique_triplets_for_a_given_paper(dir_to_save_paper_results)
-    test_papers = ['2020.findings-emnlp.378', '1905.12598', '1809.08370']
     from src.utils import read_markdown_file_content
+    from src.const import BENCHMARK_TABLES
     output_dir = (
-        f"triplets_extraction/from_entire_document_refined_prompt_{MODEL_NAME}_09_08_update"
+        f"triplets_extraction/chunk_focus_approach/{MODEL_NAME}/12_08_update"
     )
+    create_dir_if_not_exists(Path(output_dir))
     already_processed_files = [
         paper_path.name for paper_path in Path(output_dir).iterdir()
     ]
+    model_system_prompt = triplets_extraction_model_mapper[MODEL_NAME]
     for f in Path("research-papers-markdwons").iterdir():
 
         if f.stem in already_processed_files:
             print(f"File has been already processed: {f.name}")
             continue
+
+        # if f.stem not in BENCHMARK_TABLES:
+        #     continue
+
         if f.suffix == ".md" and "read" not in f.stem.lower():
             dir_to_save_paper_results = os.path.join(output_dir, f.stem)
             create_dir_if_not_exists(Path(dir_to_save_paper_results))
@@ -330,19 +353,22 @@ if __name__ == "__main__":
             for i in range(0, len(file_content), chunk_size):
                 chunk = file_content[i:i + chunk_size]
                 model_response = get_llm_model_response(prompt=openai_gpt_oss_120b_user_prompt.format(research_paper=chunk),
-                                                        model_name=MODEL_NAME, system_prompt=openai_gpt_oss_120b_system_prompt,
+                                                        model_name=MODEL_NAME, system_prompt=model_system_prompt,
                                                         pydantic_object_structured_output=ExtractedTriplets)
                 if model_response:
-                    model_response = model_response.extracted_triplets
+
+                    if isinstance(model_response, ExtractedTriplets):
+                        model_response = model_response.extracted_triplets
+
                     if model_response:
                         logger.info(f"The extracted triplets for the chunk: {model_response}")
                         valid_triplets_list.append(model_response)
 
             for output_object in valid_triplets_list:
                 if isinstance(output_object, list):
-                    valid_jsons_list.extend([x.model_dump() for x in output_object])
+                    valid_jsons_list.extend([x.model_dump() if not isinstance(x, dict) else x for x in output_object])
                 else:
-                    valid_jsons_list.append(output_object.model_dump())
+                    valid_jsons_list.append(output_object.model_dump() if isinstance(output_object, dict) else output_object)
 
             normalized_strings_triplets = normalize_strings_triplets(valid_jsons_list)
             unique_triplets = extract_unique_triplets_from_normalized_triplet_file(

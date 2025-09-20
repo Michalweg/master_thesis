@@ -17,16 +17,16 @@ class TdmrExtractionResponse(BaseModel):
 
 class TdmrExtractionResponseSplit(BaseModel):
     explanation: str = Field(description="A reasoning why the given result was obtained.")
-    task: str = Field(
+    Task: str = Field(
         description="A task from the triplet for which result is obtained"
     )
-    metric: str = Field(
+    Metric: str = Field(
         description="A metric from the triplet for which result is obtained"
     )
-    dataset: str = Field(
+    Dataset: str = Field(
         description="A dataset from the triplet for which result is obtained"
     )
-    result: float = Field(
+    Result: float = Field(
         description="A result for given triplet (task, dataset, metric) extracted from the provided table. Output only the value!"
     )
 

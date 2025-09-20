@@ -10,16 +10,16 @@ from src.triplets.triplets_unification import (
     normalize_strings_triplets)
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
 from src.const import BENCHMARK_TABLES
-from prompts.triplets_normalization import normalization_user_prompt, normalization_system_prompt
+from prompts.triplets_normalization import normalization_user_prompt, normalization_system_prompt, normalization_system_prompt_gpt_4_tubo
 from pydantic import BaseModel, Field
 
-MODEL_NAME = "openai-gpt-oss-120b"
-
+MODEL_NAME = "gpt-4-turbo"
+triplets_normalization_model_mapper = {"gpt-4-turbo": normalization_system_prompt_gpt_4_tubo,
+                                       "openai-gpt-oss-120b": normalization_user_prompt}
 from src.logger import logger
 
 class NormalizationOutput(BaseModel):
-    output_data_item: str = Field(description="A data item from the provided list or 'None' if the provided data item is not in the provided data items list. ")
-
+    output_data_item: str = Field(description="A data item from the provided list or 'None' if the provided data item is not in the provided data items list. ") 
 
 def combine_extracted_triplets_dir_into_file(extracted_triplets_dir: str) -> dict:
     combined_triplets_dict = {}
@@ -59,8 +59,12 @@ def main(
 
     already_processed_paper_names = [x.name for x in Path(output_dir_path).iterdir()]
     for paper_name in tqdm(all_extracted_triplets_per_paper):
+
+
         # if paper_name not in BENCHMARK_TABLES:
         #     continue
+
+
         if paper_name in already_processed_paper_names:
             logger.warning(f"The analyzed file was already processed: {paper_name}")
             continue
@@ -72,35 +76,41 @@ def main(
         normalized_triplets_per_paper = []
         extracted_triplets_per_paper = all_extracted_triplets_per_paper[paper_name]
 
+        model_system_prompt = triplets_normalization_model_mapper[MODEL_NAME]
+
         for extracted_triplet in extracted_triplets_per_paper:
 
             normalized_triplet = {}
             for triplet_item in extracted_triplet:
-
                 try:
                     user_prompt = PromptTemplate.from_template(normalization_user_prompt).format(
                         data_item=extracted_triplet[triplet_item],
-                        defined_list=labels_dict[triplet_item],
+                        defined_list=labels_dict[triplet_item.capitalize()],
                     )
-                    response = get_llm_model_response(prompt=user_prompt, model_name=MODEL_NAME, system_prompt=normalization_system_prompt,
+                    response = get_llm_model_response(prompt=user_prompt, model_name=MODEL_NAME, system_prompt=model_system_prompt,
                                                       pydantic_object_structured_output=NormalizationOutput)
-                    response = response.output_data_item
-                    if response.lower() != "None".lower():
-                        logger.info(f"Provided data item: {extracted_triplet[triplet_item]} output: {response}")
-                        response = normalize_string(response)
-                        normalized_triplet[triplet_item] = response
+                    if isinstance(response, NormalizationOutput):
+                        response = response.output_data_item
+                    elif isinstance(response, dict):
+                        response = response["output_data_item"]
 
-                    else:
-                        logger.warning(
-                            f"Model could not find the match for the {extracted_triplet[triplet_item]} within {labels_dict[triplet_item]}"
-                            f"for paper {paper_name} and triplet: {extracted_triplet}"
-                        )
-                        logger.warning(response)
+                    if response:
+                        if response.lower() != "None".lower():
+                            logger.info(f"Provided data item: {extracted_triplet[triplet_item]} output: {response}")
+                            response = normalize_string(response)
+                            normalized_triplet[triplet_item.capitalize()] = response
+
+                        else:
+                            logger.warning(
+                                f"Model could not find the match for the {extracted_triplet[triplet_item]} within {labels_dict[triplet_item]}"
+                                f"for paper {paper_name} and triplet: {extracted_triplet}"
+                            )
+                            logger.warning(response)
 
 
                 except Exception as e:
                     logger.error(
-                        f"Here is the exception: {e} for the {paper_name} and for {triplet_item}"
+                        f"Here is the exception: {e} for the {paper_name} and for {triplet_item} "
                         f"extracted_triplet: {extracted_triplet} and labels_dict: {labels_dict}"
                     )
                     normalized_triplet = extracted_triplet
@@ -141,11 +151,18 @@ def calculate_exact_match_on_extracted_triplets(gold_data, normalized_output):
         for output_tdm in normalized_output[paper]['normalized_output']:
             found = False
             for gold_tdm in gold_data[paper]['TDMs']:
-                if (output_tdm['Task'] == gold_tdm['Task']) and (output_tdm['Dataset'] == gold_tdm['Dataset']) and (output_tdm['Metric'] == gold_tdm['Metric']):
-                    exact_matches += 1
-                    found = True
-                if found:
-                    break
+                try:
+                    if (output_tdm['Task'] == gold_tdm['Task']) and (output_tdm['Dataset'] == gold_tdm['Dataset']) and (output_tdm['Metric'] == gold_tdm['Metric']):
+                        exact_matches += 1
+                        found = True
+                    if found:
+                        break
+                except KeyError:
+                    if (output_tdm['task'] == gold_tdm['Task']) and (output_tdm['dataset'] == gold_tdm['Dataset']) and (output_tdm['metric'] == gold_tdm['Metric']):
+                        exact_matches += 1
+                        found = True
+                    if found:
+                        break
 
         try:
             recall_scores[paper] = exact_matches / len(gold_data[paper]['TDMs'])
@@ -179,12 +196,12 @@ def create_triplets_in_evaluation_form(triplets_normalization_output_dir: str) -
 
 if __name__ == "__main__":
     normalization_output_dir = (
-        f"triplets_normalization/from_entire_document_refined_prompt_{MODEL_NAME}_09_08"
+        f"triplets_normalization/{MODEL_NAME}/from_chunk_approach_refined_prompt_12_08"
     )
     create_dir_if_not_exists(Path(normalization_output_dir))
 
     extracted_triplets_dir_path = (
-        f"triplets_extraction/from_entire_document_refined_prompt_openai-gpt-oss-120b_09_08_update"
+        f"triplets_extraction/chunk_focus_approach/gpt-4-turbo/12_08_update"
     )
     if not Path(extracted_triplets_dir_path).exists():
         raise FileNotFoundError(f"The provided path to extracted triplets: {extracted_triplets_dir_path} is broken!")
