@@ -97,13 +97,7 @@ def extract_author_model_prediction(
             save_dict_to_json(model_response, parsed_response_file_path)
         else:
             logger.info(f"The model didn't generate any response")
-            save_str_as_txt_file(
-                txt_file_path=os.path.join(
-                    str(output_dir),
-                    Path(markdown_file_path).stem + f"len_{len(file_content)}" + ".txt",
-                ),
-                str_content=model_response,
-            )
+
         logger.info(f"Extracting author/model/approach with {model_name} done")
     else:
         logger.warning(
@@ -142,13 +136,13 @@ if __name__ == "__main__":
     author_model_approach_experiment_dir_path = (
         "extending_results_extraction_with_author_approach"
     )
-    papers_dir = os.path.join(author_model_approach_experiment_dir_path, "papers")
+    papers_dir = "custom_dataset_papers/CronQuestions" # os.path.join(author_model_approach_experiment_dir_path, "papers")
     papers_to_analyze: list = list(Path(papers_dir).iterdir())
 
     # Setting up and creating output dir
     author_model_extraction_dir_without_table_content = f"author_model_extraction/{MODEL_NAME}/from_each_section_22_09"
     create_dir_if_not_exists(Path(author_model_extraction_dir_without_table_content))
-    already_processed_file = [f.name for f in Path(author_model_extraction_dir_without_table_content).iterdir()]
+    already_processed_file = [f.name for f in Path(author_model_extraction_dir_without_table_content).iterdir() if f.suffix == ".pdf"]
 
     for paper_path in tqdm(papers_to_analyze):
 
