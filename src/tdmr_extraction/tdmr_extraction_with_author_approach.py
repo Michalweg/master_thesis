@@ -177,7 +177,7 @@ if __name__ == "__main__":
     ### For each analyzed paper in the dir of the paper should be inputs and outputs that led to the given result
     # Specifying a dir with papers to analyze
     author_model_approach_experiment_dir_path = (
-        "extending_results_extracton_with_author_approach"
+        "extending_results_extraction_with_author_approach"
     )
     papers_to_extract_dir_path = os.path.join(
         author_model_approach_experiment_dir_path, "papers"
