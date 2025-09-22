@@ -1,6 +1,6 @@
 import pandas as pd
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union, Optional
 
 class TableDecisionResponse(BaseModel):
     explanation: str = Field(
@@ -10,10 +10,24 @@ class TableDecisionResponse(BaseModel):
         description="A table id which should be used to extract result for a given triplet."
     )
 
-class TdmrExtractionResponse(BaseModel):
-    tdmr_dict: dict = Field(
-        description="An updated dictionary containing task, dataset, metric and metric value."
+class ExtendedTDMRWithModel(BaseModel):
+    Task: str = Field(
+        description="A task from the triplet for which result is obtained"
     )
+    Metric: str = Field(
+        description="A metric from the triplet for which result is obtained"
+    )
+    Dataset: str = Field(
+        description="A dataset from the triplet for which result is obtained"
+    )
+    Result: float = Field(
+        description="A result for given triplet (task, dataset, metric) extracted from the provided table. Output only the value!"
+    )
+    Model: str = Field(description="A model designed by the authors from the triplet for which result is obtained.")
+
+class TdmrExtractionResponseWithModel(BaseModel):
+    explanation: str = Field(description="A reasoning why the given result was obtained or why the second part of the output is None. ")
+    tdmr_output: ExtendedTDMRWithModel | None = Field("A extracted tdmr_output or None in case of not finding relevant data within the provided table. ")
 
 class TdmrExtractionResponseSplit(BaseModel):
     explanation: str = Field(description="A reasoning why the given result was obtained.")
