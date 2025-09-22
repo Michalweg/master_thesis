@@ -15,29 +15,6 @@ from src.utils import (create_dir_if_not_exists, download_pdf,
 from pydantic import BaseModel, Field
 
 
-class ExtendedTuple(BaseModel):
-    Task: str = Field(
-        description="A task from the triplet for which result is obtained"
-    )
-    Metric: str = Field(
-        description="A metric from the triplet for which result is obtained"
-    )
-    Dataset: str = Field(
-        description="A dataset from the triplet for which result is obtained"
-    )
-    Result: float = Field(
-        description="A result for given triplet (task, dataset, metric) extracted from the provided table. Output only the value!"
-    )
-    Model: str = Field(
-        description="A model that obtained given result for the specific metric on the given task. "
-    )
-
-
-class GroundTruthTuple(BaseModel):
-    PaperUrl: str
-    TDMs: list[dict] # ExtendTuple.model_dumpy() structure
-
-
 def setup():
     # Set up headless Chrome
     options = Options()
