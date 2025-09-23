@@ -19,7 +19,7 @@ from prompts.tdmr_extraction_without_model import (
 from src.logger import logger
 from src.openai_client import get_openai_model_response, get_llm_model_response
 
-from src.tdmr_extraction.tdmr_extraction_without_author_approach import (
+from src.tdmr_extraction_utils.utils import (
     create_one_result_file,
     create_one_result_file_for_evaluation_purpose,
 )

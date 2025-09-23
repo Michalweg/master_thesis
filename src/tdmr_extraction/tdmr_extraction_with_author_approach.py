@@ -24,6 +24,10 @@ from src.tdmr_extraction_utils.utils import (
     prepare_extracted_tables_for_experiment,
 )
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
+from src.tdmr_extraction_utils.utils import (
+    create_one_result_file,
+    create_one_result_file_for_evaluation_purpose,
+)
 
 MODEL_NAME = "openai-gpt-oss-120b"
 
@@ -143,45 +147,6 @@ def define_all_unique_extracted_approaches_names(
     return all_extracted_authors_approach
 
 
-def create_one_result_file(output_dir: Path):
-    processed_dicts = []
-    all_unique_papersInitial = set()
-    for index, paper_dir in enumerate(list(output_dir.iterdir())):
-        paper_result_file_path = paper_dir
-        paper_result_json = read_json(Path(str(paper_result_file_path)))
-        for result_dict in paper_result_json:
-            if isinstance(result_dict, dict):
-                result_dict.update({"PaperName": paper_dir.stem.split("_")[0]})
-                all_unique_papersInitial.add(paper_dir.name)
-                result_keyword = "Result" if "Result" in result_dict else "Results"
-
-                if result_keyword in result_dict:
-                    stay_dict = {
-                        k: v for k, v in result_dict.items() if k != result_keyword
-                    }
-                    if isinstance(result_dict[result_keyword], dict):
-                        new_dicts = []
-                        for k, v in result_dict[result_keyword].items():
-                            new_result_dict = stay_dict.copy()
-                            new_result_dict.update({"Result": v})
-                            new_dicts.append(new_result_dict)
-                        processed_dicts.extend(new_dicts)
-
-                    else:
-                        if result_dict[result_keyword]:
-                            processed_dicts.append(result_dict)
-                else:
-                    processed_dicts.append(result_dict)
-            else:
-                print(result_dict)
-    save_dict_to_json(
-        processed_dicts,
-        os.path.join(
-            Path(output_dir).parent, "tdmr_extraction_with_author_data_combined.json"
-        ),
-    )
-
-
 if __name__ == "__main__":
     ### For each analyzed paper in the dir of the paper should be inputs and outputs that led to the given result
     # Specifying a dir with papers to analyze
@@ -218,7 +183,7 @@ if __name__ == "__main__":
 
         logger.info(f"Processing: {paper_path}")
 
-        paper_name_output_path = Path(f"{tdmr_extraction_output_dir}/{paper_path.name}")
+        paper_name_output_path = Path(f"{tdmr_extraction_output_dir}/{paper_path.stem}")
         create_dir_if_not_exists(paper_name_output_path)
 
         # Extracting all unique values for extracted approaches
