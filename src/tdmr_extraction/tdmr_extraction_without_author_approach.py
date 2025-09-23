@@ -227,41 +227,6 @@ def get_extract_from_openai(prompt: str, parser: JsonOutputParser):
     return response
 
 
-
-
-
-def merge_results_by_keys(dict_list):
-    merged = {}
-
-    for d in dict_list:
-        key = (
-            d.get("Task").strip("'\""),
-            d.get("Dataset").strip("'\""),
-            d.get("Metric").strip("'\""),
-        )
-        result = d.get("Result")
-
-        if key not in merged:
-            # Initialize a base dictionary with an empty result list
-            merged[key] = {
-                "Task": d.get("Task").strip("'\""),
-                "Dataset": d.get("Dataset").strip("'\""),
-                "Metric": d.get("Metric").strip("'\""),
-                "Result": [],
-            }
-
-        # Add result if it exists and is not None
-        if result is not None:
-            # If it's a list, extend; otherwise, append as a single item
-            if isinstance(result, list):
-                merged[key]["Result"].extend(result)
-            else:
-                merged[key]["Result"].append(result)
-
-    # Return as a list of merged dictionaries
-    return list(merged.values())
-
-
 def run_extending_context_experiment(
     test_paper_dir: str,
     extracted_tabels_origin_dir: str,

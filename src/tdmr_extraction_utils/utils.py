@@ -10,6 +10,7 @@ from src.openai_client import get_llm_model_response, get_openai_model_response
 from src.tdmr_extraction_utils.data_models import (
     PREPARED_DICT_INTO_STR_TEMPLATE, PreparedTable, TableDecisionResponse)
 from src.utils import read_json, save_dict_to_json
+from tqdm import tqdm
 
 
 def prepare_extracted_tables_for_experiment(
@@ -28,6 +29,38 @@ def prepare_extracted_tables_for_experiment(
         )
         prepared_dicts.append(prepared_dict)
     return prepared_dicts
+
+
+def merge_results_by_keys(dict_list):
+    merged = {}
+
+    for d in dict_list:
+        key = (
+            d.get("Task").strip("'\""),
+            d.get("Dataset").strip("'\""),
+            d.get("Metric").strip("'\""),
+        )
+        result = d.get("Result")
+
+        if key not in merged:
+            # Initialize a base dictionary with an empty result list
+            merged[key] = {
+                "Task": d.get("Task").strip("'\""),
+                "Dataset": d.get("Dataset").strip("'\""),
+                "Metric": d.get("Metric").strip("'\""),
+                "Result": [],
+            }
+
+        # Add result if it exists and is not None
+        if result is not None:
+            # If it's a list, extend; otherwise, append as a single item
+            if isinstance(result, list):
+                merged[key]["Result"].extend(result)
+            else:
+                merged[key]["Result"].append(result)
+
+    # Return as a list of merged dictionaries
+    return list(merged.values())
 
 
 def formate_prepared_dicts_into_str(prepared_dicts: list[PreparedTable]) -> str:
