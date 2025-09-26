@@ -326,15 +326,16 @@ if __name__ == "__main__":
     #     combine_and_unique_triplets_for_a_given_paper(dir_to_save_paper_results)
     from src.utils import read_markdown_file_content
     from src.const import BENCHMARK_TABLES
+    dir_with_markdowns = "custom_dataset_papers/CronQuestions"  # "research-papers-markdwons"
     output_dir = (
-        f"triplets_extraction/chunk_focus_approach/{MODEL_NAME}/12_08_update"
+        f"triplets_extraction/chunk_focus_approach/{MODEL_NAME}/20_09_custom_dataset_cron_questions"
     )
     create_dir_if_not_exists(Path(output_dir))
     already_processed_files = [
         paper_path.name for paper_path in Path(output_dir).iterdir()
     ]
     model_system_prompt = triplets_extraction_model_mapper[MODEL_NAME]
-    for f in Path("research-papers-markdwons").iterdir():
+    for f in Path(dir_with_markdowns).iterdir():
 
         if f.stem in already_processed_files:
             print(f"File has been already processed: {f.name}")
@@ -344,6 +345,7 @@ if __name__ == "__main__":
         #     continue
 
         if f.suffix == ".md" and "read" not in f.stem.lower():
+            logger.info(f"Analyzing file: {f.name}")
             dir_to_save_paper_results = os.path.join(output_dir, f.stem)
             create_dir_if_not_exists(Path(dir_to_save_paper_results))
             file_content = read_markdown_file_content(f)

@@ -1,8 +1,6 @@
 import os
-from io import StringIO
 from pathlib import Path
 
-import pandas as pd
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from tqdm import tqdm
@@ -10,112 +8,45 @@ from tqdm import tqdm
 from prompts.tdmr_extraction_with_table_selection import (
     PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_PROMPT_TEMPLATE,
     PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT,
-    PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT_GPT_4_TURBO)
+    PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT_GPT_4_TURBO,
+)
 from prompts.tdmr_extraction_without_model import (
     TDMR_EXTRACTION_PROMPT_07_02_no_format_instructions_prompt,
     TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value,
-    TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value_GPT4_turbo)
+    TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value_GPT4_turbo,
+)
 
 from src.logger import logger
-from src.openai_client import (get_openai_model_response,
-                               get_llm_model_response)
+from src.openai_client import get_openai_model_response, get_llm_model_response
 
-from src.tdmr_extraction.tdmr_extraction_without_author_approach import (
-    create_one_result_file, create_one_result_file_for_evaluation_purpose)
-from src.tdmr_extraction_utils.data_models import (TdmrExtractionResponseSplit, PreparedTable,
-                                                   TableDecisionResponse, PREPARED_DICT_INTO_STR_TEMPLATE)
+from src.tdmr_extraction_utils.utils import (
+    create_one_result_file,
+    create_one_result_file_for_evaluation_purpose,
+)
+from src.tdmr_extraction_utils.data_models import (
+    TdmrExtractionResponseSplit,
+    PreparedTable,
+    TableDecisionResponse,
+    PREPARED_DICT_INTO_STR_TEMPLATE,
+)
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
 from src.const import BENCHMARK_TABLES
+from src.tdmr_extraction_utils.utils import (
+    prepare_extracted_tables_for_experiment,
+    pick_optimal_source_table_for_given_triplet,
+)
 
 MODEL_NAME = "gpt-4-turbo"
 
-SYSTEM_PROMPT_RESULTS_EXTRACTION_MODEL_MAPPER = {"gpt-4-turbo": TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value_GPT4_turbo,
-                                                 "openai-gpt-oss-120b": TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value}
+SYSTEM_PROMPT_RESULTS_EXTRACTION_MODEL_MAPPER = {
+    "gpt-4-turbo": TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value_GPT4_turbo,
+    "openai-gpt-oss-120b": TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value,
+}
 
-SYSTEM_PROMPT_PICKING_UP_TABLEMODEL_MAPPER = {"gpt-4-turbo": PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT_GPT_4_TURBO,
-                                              "openai-gpt-oss-120b": PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT}
-
-
-
-def prepare_extracted_tables_for_experiment(
-    extracted_tables_dict_object: list[dict],
-) -> list[PreparedTable]:
-    prepared_dicts = []
-    for i, table_object in enumerate(extracted_tables_dict_object):
-        csv_data = StringIO(table_object["data"])
-        table = pd.read_csv(csv_data)
-        table_caption = table_object["caption"]
-        table_id = i + 1
-        prepared_dict = PreparedTable(
-            table=table.to_dict('records'), table_caption=table_caption, table_id=table_id
-        )
-        prepared_dicts.append(prepared_dict)
-    return prepared_dicts
-
-
-def pick_optimal_source_table_for_given_triplet(
-    extracted_triplet: dict,
-    prepared_dicts: list[PreparedTable],
-    prompt_template: str,
-    result_object: TableDecisionResponse,
-    structured_output: bool = True,
-    system_prompt: str = "",
-) -> dict:
-    prepared_dicts_into_str = formate_prepared_dicts_into_str(prepared_dicts)
-    prompt, system_prompt = prepare_prompt_for_table_choosing(
-        extracted_triplet,
-        prepared_dicts_into_str,
-        prompt_template=prompt_template,
-        system_prompt=system_prompt,
-    )
-    if structured_output:
-        response = get_llm_model_response(prompt=prompt, pydantic_object_structured_output=result_object,
-                                          system_prompt=system_prompt, model_name=MODEL_NAME)
-        if response:
-            if not isinstance(response, dict):
-                response = response.model_dump()
-    else:
-        response = get_llm_model_response(
-            prompt=prompt, pydantic_object_structured_output=None,
-            system_prompt=system_prompt, model_name=MODEL_NAME
-        )
-    logger.info(f"Response for picking table: {response}")
-    return response
-
-
-def formate_prepared_dicts_into_str(prepared_dicts: list[PreparedTable]) -> str:
-    dicts_into_str = ""
-
-    for prepared_dict in prepared_dicts:
-        dicts_into_str += PREPARED_DICT_INTO_STR_TEMPLATE.format(
-            table_markdown=prepared_dict.dataframe.head(20).to_markdown(),
-            table_caption=prepared_dict.table_caption,
-            table_id=prepared_dict.table_id,
-        )
-        dicts_into_str += "\n"
-    return dicts_into_str
-
-
-def prepare_prompt_for_table_choosing(
-    extracted_triplet: dict,
-    prepared_dicts_str: str,
-    prompt_template: str,
-    system_prompt: str = "",
-
-) -> tuple[str, str]:
-    if system_prompt:
-        prompt = PromptTemplate(
-            input_variables=["table_markdown", "table_caption", "table_id"],
-            template=prompt_template,
-        ).format(triplet=extracted_triplet, tables_data=prepared_dicts_str)
-    else:
-        prompt_template_combined = system_prompt + prompt_template
-        prompt = PromptTemplate(
-            input_variables=["table_markdown", "table_caption", "table_id"],
-            template=prompt_template_combined,
-        ).format(triplet=extracted_triplet, tables_data=prepared_dicts_str)
-        system_prompt = ""
-    return prompt, system_prompt
+SYSTEM_PROMPT_PICKING_UP_TABLEMODEL_MAPPER = {
+    "gpt-4-turbo": PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT_GPT_4_TURBO,
+    "openai-gpt-oss-120b": PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT,
+}
 
 
 def extract_result_from_given_table_for_triplet(
@@ -136,14 +67,19 @@ def extract_result_from_given_table_for_triplet(
             table_caption=table_wit_additional_data.table_caption,
         )
         response = get_llm_model_response(
-            prompt=prompt, pydantic_object_structured_output=result_object, system_prompt=system_prompt, model_name=MODEL_NAME
+            prompt=prompt,
+            pydantic_object_structured_output=result_object,
+            system_prompt=system_prompt,
+            model_name=MODEL_NAME,
         )
 
         if isinstance(response, dict):
             try:
                 response = TdmrExtractionResponseSplit(**response)
             except Exception as e:
-                logger.error(f"The parsed response: {response} could not be transferred to a pydantic object due to: {str(e)}")
+                logger.error(
+                    f"The parsed response: {response} could not be transferred to a pydantic object due to: {str(e)}"
+                )
                 response = None
 
         logger.info(f"Response for assigning value to the triplet: {response}")
@@ -211,13 +147,16 @@ def main(
                         )
                     )
                     try:
-                        system_prompt_per_model_picking_up_table = SYSTEM_PROMPT_PICKING_UP_TABLEMODEL_MAPPER[MODEL_NAME]
+                        system_prompt_per_model_picking_up_table = (
+                            SYSTEM_PROMPT_PICKING_UP_TABLEMODEL_MAPPER[MODEL_NAME]
+                        )
                         table_id_to_use = pick_optimal_source_table_for_given_triplet(
                             extracted_triplet=triplet,
                             prepared_dicts=prepared_dicts_for_selecting_optimal_table,
                             prompt_template=PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_PROMPT_TEMPLATE,
                             result_object=TableDecisionResponse,
                             system_prompt=system_prompt_per_model_picking_up_table,
+                            model_name=MODEL_NAME,
                         )["table_id_to_extract_result_metric_from"]
                         table_dict = [
                             prepared_table_dict
@@ -229,7 +168,9 @@ def main(
                             f"The provided prepared table is invalid: {str(e)}, {triplet}, {paper_path}"
                         )
                         continue
-                    system_prompt_per_model_result_extraction = SYSTEM_PROMPT_RESULTS_EXTRACTION_MODEL_MAPPER[MODEL_NAME]
+                    system_prompt_per_model_result_extraction = (
+                        SYSTEM_PROMPT_RESULTS_EXTRACTION_MODEL_MAPPER[MODEL_NAME]
+                    )
                     response = extract_result_from_given_table_for_triplet(
                         triplet,
                         table_dict,
@@ -256,10 +197,10 @@ def main(
 
 if __name__ == "__main__":
     create_result_file: bool = True
-    extracted_triplet_dir_path = "triplets_normalization/gpt-4-turbo/from_chunk_approach_refined_prompt_12_08"
-    tdmr_extraction_dir = (
-        f"tdmr_extraction/{MODEL_NAME}/from_chunk_by_chunk_table_and_value_selection_13_08"
+    extracted_triplet_dir_path = (
+        "triplets_normalization/gpt-4-turbo/from_chunk_approach_refined_prompt_12_08"
     )
+    tdmr_extraction_dir = f"tdmr_extraction/{MODEL_NAME}/from_chunk_by_chunk_table_and_value_selection_13_08"
 
     create_dir_if_not_exists(Path(tdmr_extraction_dir))
     path_with_tables_captions = (

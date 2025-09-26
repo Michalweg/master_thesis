@@ -4,11 +4,11 @@ from pathlib import Path
 from src.utils import read_json, save_dict_to_json
 
 
-def extract_unique_triplets_from_normalized_triplet_file(data: list):
+def extract_unique_triplets_from_normalized_triplet_file(data: list[dict]):
     return [dict(t) for t in {tuple(sorted(d.items())) for d in data}]
 
 
-def deduplicate_outputs(normalized_output):
+def deduplicate_outputs(normalized_output: list[dict]):
     seen = set()
     deduped = []
     for entry in normalized_output:
@@ -33,7 +33,7 @@ def normalize_string(s):
     return s.strip().strip("'").strip('"')
 
 
-def normalize_strings_triplets(triplets):
+def normalize_strings_triplets(triplets: list[dict]):
     for triplet in triplets:
         for k, v in triplet.items():
             try:
@@ -43,8 +43,8 @@ def normalize_strings_triplets(triplets):
     return triplets
 
 
-def normalize_extracted_triplet_dir(extratced_triplet_dir: str):
-    for paper_dir in Path(extratced_triplet_dir).iterdir():
+def normalize_extracted_triplet_dir(extracted_triplet_dir: str):
+    for paper_dir in Path(extracted_triplet_dir).iterdir():
         if paper_dir.is_dir():
             extracted_triplet = read_json(
                 Path(os.path.join(paper_dir, f"{paper_dir.name}.json"))

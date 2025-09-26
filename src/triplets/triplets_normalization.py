@@ -13,9 +13,9 @@ from src.const import BENCHMARK_TABLES
 from prompts.triplets_normalization import normalization_user_prompt, normalization_system_prompt, normalization_system_prompt_gpt_4_tubo
 from pydantic import BaseModel, Field
 
-MODEL_NAME = "gpt-4-turbo"
+MODEL_NAME = "openai-gpt-oss-120b"
 triplets_normalization_model_mapper = {"gpt-4-turbo": normalization_system_prompt_gpt_4_tubo,
-                                       "openai-gpt-oss-120b": normalization_user_prompt}
+                                       "openai-gpt-oss-120b": normalization_system_prompt}
 from src.logger import logger
 
 class NormalizationOutput(BaseModel):
@@ -196,17 +196,17 @@ def create_triplets_in_evaluation_form(triplets_normalization_output_dir: str) -
 
 if __name__ == "__main__":
     normalization_output_dir = (
-        f"triplets_normalization/{MODEL_NAME}/from_chunk_approach_refined_prompt_12_08"
+        "triplets_normalization/openai-gpt-oss-120b/chunk_focus_approach/20_09_update"
     )
     create_dir_if_not_exists(Path(normalization_output_dir))
 
     extracted_triplets_dir_path = (
-        f"triplets_extraction/chunk_focus_approach/gpt-4-turbo/12_08_update"
+        "triplets_extraction/chunk_focus_approach/openai-gpt-oss-120b/20_09_custom_dataset_cron_questions"
     )
     if not Path(extracted_triplets_dir_path).exists():
         raise FileNotFoundError(f"The provided path to extracted triplets: {extracted_triplets_dir_path} is broken!")
 
-    true_dataset_path = "leaderboard-generation/tdm_annotations.json"
+    true_dataset_path = "custom_dataset_papers/result-notebook-lm-more-general_ground_truth.json" # "leaderboard-generation/tdm_annotations.json"
     normalized_triplets = main(
         extracted_triplets_dir_path, true_dataset_path, normalization_output_dir
     )

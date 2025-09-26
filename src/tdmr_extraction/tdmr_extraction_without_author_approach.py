@@ -13,7 +13,11 @@ from src.openai_client import (get_openai_model_response,
 from src.parsers.marker_parser import parse_pdf_with_marker
 from src.parsers.parser import extract_pdf_sections_content
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
-from src.tdmr_extraction_utils.data_models import TdmrExtractionResponseSplit, TdmrExtractionResponse
+from src.tdmr_extraction_utils.data_models import TdmrExtractionResponseSplit
+from src.tdmr_extraction_utils.utils import (
+    create_one_result_file,
+    create_one_result_file_for_evaluation_purpose,
+)
 
 MODEL_NAME = "gpt-4-turbo"
 
@@ -141,7 +145,7 @@ def extract_result_from_given_table_for_triplet_with_extended_context(
     prompt_template: str,
     context_dict: dict,
 ) -> dict:
-    parser = JsonOutputParser(pydantc_object=TdmrExtractionResponse)
+    parser = JsonOutputParser(pydantc_object=None) # TODO fix this
     prompt = PromptTemplate(
         input_variables=[
             "triplet",
@@ -221,215 +225,6 @@ def get_extract_from_openai(prompt: str, parser: JsonOutputParser):
         response = {}
 
     return response
-
-
-def create_one_result_file(output_dir: Path):
-    processed_dicts = []
-    all_unique_papersInitial = set()
-    for index, paper_dir in enumerate(list(output_dir.iterdir())):
-        paper_result_file_path = os.path.join(
-            paper_dir, paper_dir.name + "_tdmr_extraction.json"
-        )
-        paper_result_json = read_json(Path(str(paper_result_file_path)))
-        for result_dict in paper_result_json:
-            if isinstance(result_dict, dict):
-                result_dict.update({"PaperName": paper_dir.name})
-                all_unique_papersInitial.add(paper_dir.name)
-                result_keyword = "Result" if "Result" in result_dict else "Results"
-                if result_keyword in result_dict:
-                    stay_dict = {
-                        k: v for k, v in result_dict.items() if k != result_keyword
-                    }
-                    if isinstance(result_dict[result_keyword], dict):
-                        new_dicts = []
-                        for k, v in result_dict[result_keyword].items():
-                            new_result_dict = stay_dict.copy()
-                            new_result_dict.update({"Result": v})
-                            new_dicts.append(new_result_dict)
-                        processed_dicts.extend(new_dicts)
-
-                    else:
-                        processed_dicts.append(result_dict)
-                else:
-                    processed_dicts.append(result_dict)
-            else:
-                print(result_dict)
-    save_dict_to_json(
-        processed_dicts,
-        os.path.join(output_dir, "processed_tdmr_extraction_test_papers.json"),
-    )
-
-
-def merge_results_by_keys(dict_list):
-    merged = {}
-
-    for d in dict_list:
-        key = (
-            d.get("Task").strip("'\""),
-            d.get("Dataset").strip("'\""),
-            d.get("Metric").strip("'\""),
-        )
-        result = d.get("Result")
-
-        if key not in merged:
-            # Initialize a base dictionary with an empty result list
-            merged[key] = {
-                "Task": d.get("Task").strip("'\""),
-                "Dataset": d.get("Dataset").strip("'\""),
-                "Metric": d.get("Metric").strip("'\""),
-                "Result": [],
-            }
-
-        # Add result if it exists and is not None
-        if result is not None:
-            # If it's a list, extend; otherwise, append as a single item
-            if isinstance(result, list):
-                merged[key]["Result"].extend(result)
-            else:
-                merged[key]["Result"].append(result)
-
-    # Return as a list of merged dictionaries
-    return list(merged.values())
-
-
-def create_one_result_file_for_evaluation_purpose(output_dir: Path):
-    processed_dicts = []
-    evaluation_result_dict = (
-        {}
-    )  # Dict which has a structure required for evaluation this approach to the author's
-    # With the structure of a key representing a paper name (including. pdf file) and the value "normalized_outputs" which is
-    # a list of extracted triplets for given file
-    triplets_without_result = 0
-    no_of_triplets_with_results_instead_of_results = 0
-    no_of_dicts_instead_of_lists = 0
-
-    for index, paper_dir in tqdm(enumerate(list(output_dir.iterdir()))):
-        if (
-            paper_dir.is_dir() and "DS_store".lower() not in paper_dir.name.lower()
-        ):  # Excluding all non-papers dirs as well as DS_store
-            papers_proceed_dicts = []
-            paper_result_file_path = os.path.join(
-                paper_dir, paper_dir.name + "_tdmr_extraction.json"
-            )
-            paper_result_json = read_json(Path(str(paper_result_file_path)))
-            # Exclude all potential duplicates here (with respect to TDM, Result is being excluded)
-            paper_result_json = merge_results_by_keys(paper_result_json)
-            for result_dict in paper_result_json:
-
-                if isinstance(result_dict, dict):
-                    result_dict.update({"PaperName": paper_dir.name})
-                    result_keyword = "Result" if "Result" in result_dict else "Results"
-                    if result_keyword not in result_dict:
-                        triplets_without_result += 1
-                        continue
-                    if result_keyword != "Result":
-                        result_dict["Result"] = result_dict.pop("Results")
-                        no_of_triplets_with_results_instead_of_results += 1
-                    if result_keyword in result_dict:
-                        if isinstance(result_dict[result_keyword], dict):
-                            no_of_dicts_instead_of_lists += 1
-                            logger.error(
-                                f"From the file: {paper_dir.name} we got dict instead of a list: {result_dict[result_keyword]}"
-                            )
-                            continue
-
-                        elif isinstance(
-                            result_dict[result_keyword], list
-                        ):  # The object associated with "Result" key is not a dict
-                            if result_dict[result_keyword]:
-                                if len(result_dict[result_keyword]) == 1:
-                                    valid_list_of_strings_with_results = result_dict[result_keyword][0].split(", ")
-                                    result_dict[result_keyword] = valid_list_of_strings_with_results
-                                try:
-                                    paper_result_dict = {
-                                        **result_dict,
-                                        **{
-                                            "Result": str(
-                                                max(result_dict[result_keyword])
-                                            )
-                                        },
-                                        **{
-                                            "ResultList": [
-                                                str(x)
-                                                for x in result_dict[result_keyword]
-                                            ]
-                                        },
-                                    }
-                                except TypeError:
-                                    valid_results_list = []
-                                    invalid_results_list = []
-                                    for result in result_dict[result_keyword]:
-                                        if isinstance(result, (int, float)):
-                                            valid_results_list.append(result)
-                                        else:
-                                            invalid_results_list.append(result)
-                                    logger.warning(
-                                        f"Invalid elements from results list extracted: {invalid_results_list} from the file: {paper_dir.name}"
-                                    )
-                                    if valid_results_list:
-                                        paper_result_dict = {
-                                            **result_dict,
-                                            **{"Result": str(max(valid_results_list))},
-                                            **{
-                                                "ResultList": [
-                                                    str(x)
-                                                    for x in result_dict[result_keyword]
-                                                ]
-                                            },
-                                        }
-                                    else:
-                                        logger.error(
-                                            f"No valid results found for this list: {result_dict[result_keyword]} from this file: {paper_dir.name}"
-                                        )
-                                        continue
-                                papers_proceed_dicts.append(paper_result_dict)
-                            processed_dicts.append(result_dict)
-
-                        elif isinstance(
-                            result_dict[result_keyword], float
-                        ) or isinstance(
-                            result_dict[result_keyword], str
-                        ):  # The object associated with "Result" key is not a dict and not a list!
-                            result_dict[result_keyword] = str(
-                                result_dict[result_keyword]
-                            )
-                            papers_proceed_dicts.append(result_dict)
-                            processed_dicts.append(result_dict)
-                        else:
-                            logger.error(
-                                f"This is not handled yet!: {result_dict[result_keyword]}"
-                            )
-
-                    else:
-                        logger.warning(
-                            f"Neither 'result' nor 'results' were found withing the analyzed object: {result_dict}"
-                        )
-                        processed_dicts.append(result_dict)
-                        papers_proceed_dicts.append(result_dict)
-                else:
-                    logger.warning(
-                        f"This result object is totally off: {result_dict} in the {paper_dir.name} directory"
-                    )
-                    print(result_dict)
-
-            logger.info(f"Analysis of a dir called: {paper_dir.name} is done!")
-            evaluation_result_dict[paper_dir.name + ".pdf"] = {
-                "normalized_output": papers_proceed_dicts
-            }
-        else:
-            print(f"Broken input: {paper_dir}")
-
-    logger.info(
-        f"No. of entries with dicts not lists: {no_of_dicts_instead_of_lists} n\ No. of tuples without result data: {triplets_without_result} \n"
-        f"No. of tuples with results and not result: {no_of_triplets_with_results_instead_of_results}"
-    )
-    # save_dict_to_json(processed_dicts, os.path.join(output_dir, 'processed_tdmr_extraction_test_papers.json'))
-    save_dict_to_json(
-        evaluation_result_dict,
-        os.path.join(
-            output_dir, "processed_tdmr_extraction_test_papers_evaluation_valid_results.json"
-        ),
-    )
 
 
 def run_extending_context_experiment(

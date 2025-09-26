@@ -11,3 +11,7 @@ llm_parsed_tables/
 manual_created_markdowns_for_prompt_design
 papers/
 triplets_extraction/
+tdmr_extraction/
+tdmr_extraction_with_author_approach/
+research-papers-markdwons/
+archive/
