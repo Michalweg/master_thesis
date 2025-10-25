@@ -78,9 +78,12 @@ def preprocess_data(
     df_long = df.melt(
         id_vars=[col for col in df.columns if col not in present_metrics],
         value_vars=list(present_metrics),
-        var_name="metric",
-        value_name="value"
+        var_name="Metric",
+        value_name="Result"
     )
+
+    for col in df_long.columns:
+        df_long[col] = df_long[col].astype(str).str.strip()
     df_long.replace("-", np.nan, inplace=True)
     return df_long.dropna(ignore_index=True)
 
@@ -96,20 +99,33 @@ def preprocess_table(table: pd.DataFrame) -> pd.DataFrame:
 
 
 def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: str,columns_to_drop: list[str],
-                                       known_metrics:list[str]) -> dict:
+                                       known_metrics:list[str], papers_dir: str) -> dict:
     tables = extract_tables_from_markdown(markdown_file_path)
+    if not tables:
+        table = pd.read_csv(markdown_file_path, sep="|")
+        columns_to_drop = [col for col in table if "unnamed" in col.lower()]
+        table.drop(columns=columns_to_drop, inplace=True)
+        table.columns = [col.strip() for col in table.columns]
+        tables = [table]
     tables_results = {}
     for table in tables:
         table = preprocess_table(table)
         preprocessed_table = preprocess_data(table, dataset_name=dataset_name, columns_to_drop=columns_to_drop, metric_names=known_metrics)
-        model_system_column_nae = "Model / System" if "Model / System" in preprocessed_table.columns else "Model"
+        model_system_column_name = "Model / System" if "Model / System" in preprocessed_table.columns else "Model"
+        for paper_url in preprocessed_table["PaperUrl"].unique():
+            logger.info(f"Processing paper '{paper_url}'")
+            paper_name = Path(paper_url).name
+            if ".pdf" not in paper_name:
+                logger.warning(f"Weird paper name '{paper_name}'")
+                paper_name += f".pdf"
+            download_pdf(paper_url, os.path.join(papers_dir, dataset_name, paper_name))
         result = (
             preprocessed_table.groupby("PaperName")
-            .apply(lambda g: g[["Dataset", model_system_column_nae, "metric", "value"]]
+            .apply(lambda g: g[["Dataset", model_system_column_name, "Metric", "Result", "PaperUrl"]]
                    .rename(columns={
-                model_system_column_nae: "Model",
-                "metric": "Metric",
-                "value": "Result"
+                model_system_column_name: "Model",
+                "Metric": "Metric",
+                "Result": "Result"
             })
                    .to_dict(orient="records"))
             .to_dict()
@@ -124,10 +140,10 @@ def create_result_dict_in_correct_format(result: dict) -> dict:
         if "TDMs" in result[paper_name]:
             return result
         if not paper_name.endswith(".pdf"):
-            correct_result[paper_name + ".pdf"] = {"PaperURL": "",
+            correct_result[paper_name + ".pdf"] = {"PaperURL": result[paper_name][0].get("PaperUrl", ""),
                                           "TDMs": result[paper_name]}
         else:
-            correct_result[paper_name] = {"PaperURL": "",
+            correct_result[paper_name] = {"PaperURL": result[paper_name][0].get("PaperUrl", ""),
                                          "TDMs": result[paper_name]}
     return correct_result
 
@@ -140,76 +156,86 @@ def add_hardcoded_task_to_result_dict(result: dict, hardcoded_task_name: str = "
 
 if __name__ == "__main__":
     columns_to_drop = ["Year", "Language", "Reported by", "id"]
-    known_metrics = ["F1", "Precision", "Recall", "Hits@1", "Hits@10", "Precision@1", "MRR", "Hits@5"]
+    known_metrics = ["F1", "Precision", "Recall", "Hits@1", "Hits@10", "Precision@1", "MRR", "Hits@5", "Accuracy"]
     custom_dataset_papers_dir = "custom_dataset_papers"
+    manual_work_needed = ["Compositional Wikidata Questions"]
+    analyzed_knowledge_graph = "dbpedia"
 
-    for paper in Path(custom_dataset_papers_dir).iterdir():
-        if paper.is_dir():
-            result_file_path = paper.joinpath("result.json")
-            result_dict = read_json(result_file_path)
-            correct_result_dict = create_result_dict_in_correct_format(result_dict)
-            correct_result_dict = add_hardcoded_task_to_result_dict(correct_result_dict)
-            save_dict_to_json(correct_result_dict, result_file_path)
+    # for paper in Path(custom_dataset_papers_dir).iterdir():
+    #     if paper.is_dir():
+    #         result_file_path = paper.joinpath("result.json")
+    #         result_dict = read_json(result_file_path)
+    #         correct_result_dict = create_result_dict_in_correct_format(result_dict)
+    #         correct_result_dict = add_hardcoded_task_to_result_dict(correct_result_dict)
+    #         save_dict_to_json(correct_result_dict, result_file_path)
 
-    datasets_for_markdown = ["TimeQuestions - Oridinal", "TimeQuestions - Temporal Answer", "Mintaka"]
+    ### MARKDOWN APPROACH ###
+    datasets_for_markdown = ["QALD-9-Plus-DBpedia"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
     for dataset in datasets_for_markdown:
-        markdown_file = os.path.join(custom_dataset_papers_dir, dataset, dataset + ".md")
-        preprocessed_dict = preprocess_md_file_from_repository(markdown_file, dataset_name=dataset, columns_to_drop=columns_to_drop, known_metrics=known_metrics)
+        markdown_file = os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph, dataset, dataset + ".md")
+        preprocessed_dict = preprocess_md_file_from_repository(markdown_file, dataset_name=dataset, columns_to_drop=columns_to_drop, known_metrics=known_metrics, papers_dir=os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph))
         result = create_result_dict_in_correct_format(preprocessed_dict)
+        result = add_hardcoded_task_to_result_dict(result)
         save_dict_to_json(result, Path(markdown_file).with_suffix(".json"))
 
 
-    manual_work_needed = ["Compositional Wikidata Questions"]
 
 
-    base_url = "https://kgqa.github.io/leaderboard/datasets/wikidata/"
-    datasets = ["MKQA", "RuBQ-v2", "CronQuestions", "Mintaka", "SimpleQuestionsWikidata", "TimeQuestions - Explicit",
-                "TimeQuestions - Implicit", "TimeQuestions - Oridinal", "TimeQuestions - Overall",
-                "TimeQuestions - Temporal Answer", "QALD-9-Plus-Wikidata"]
-
-    driver = setup()
-
-    already_processed_datasets = [dir_name for dir_name in os.listdir(custom_dataset_papers_dir)]
-
-    # Iterate trough datasets:
-    for dataset in datasets:
-        if dataset in already_processed_datasets:
-            logger.info(f"Skipping dataset '{dataset}' as it's already done")
-            continue
-
-        url = base_url + dataset
-        page_source = get_rendered_page_source(driver, url)
-        data = extract_relevant_info_from_rendered_page(page_source)
-
-        if data:
-            preprocessed_data = preprocess_data(data, dataset, columns_to_drop, metric_names=known_metrics)
-
-            dataset_papers_dir = os.path.join(custom_dataset_papers_dir, dataset)
-            create_dir_if_not_exists(Path(dataset_papers_dir))
-
-            for paper_url in preprocessed_data["PaperUrl"].unique():
-                logger.info(f"Processing paper '{paper_url}'")
-                paper_name = Path(paper_url).name
-                if ".pdf" not in paper_name:
-                    logger.warning(f"Weird paper name '{paper_name}'")
-                    paper_name += f".pdf"
-                download_pdf(paper_url, os.path.join(dataset_papers_dir, paper_name))
-
-            result = (
-                preprocessed_data.groupby("PaperName")
-                .apply(lambda g: g[["Dataset", "Model / System", "metric", "value"]]
-                       .rename(columns={
-                    "Model / System": "Model",
-                    "metric": "Metric",
-                    "value": "Result"
-                })
-                       .to_dict(orient="records"))
-                .to_dict()
-            )
-            result = create_result_dict_in_correct_format(result)
-            save_dict_to_json(result, os.path.join(dataset_papers_dir, "result.json"))
-
-        else:
-            logger.warning(f"Skipping dataset '{dataset}' due to lack of data")
-
-    driver.quit()
+    ### SELENIUM APPROACH ###
+    # knowledge_graph_name = "dbpedia"
+    # custom_dataset_papers_dir = os.path.join(custom_dataset_papers_dir, knowledge_graph_name)
+    # base_url = f"https://kgqa.github.io/leaderboard/datasets/{knowledge_graph_name}/"
+    # wiki_datasets = ["MKQA", "RuBQ-v2", "CronQuestions", "Mintaka", "SimpleQuestionsWikidata", "TimeQuestions - Explicit",
+    #             "TimeQuestions - Implicit", "TimeQuestions - Oridinal", "TimeQuestions - Overall",
+    #             "TimeQuestions - Temporal Answer", "QALD-9-Plus-Wikidata"]
+    # dbpedia_datasets = ["LC-QuAD v1", "LC-QuAD v2", "QALD-1", "QALD-2", "QALD-3", "QALD-4", "QALD-5", "QALD-6", "QALD-7", "QALD-8", "rewordQALD9", "QALD-9"]
+    #
+    # driver = setup()
+    #
+    # already_processed_datasets = [dir_name for dir_name in os.listdir(custom_dataset_papers_dir)]
+    #
+    # # Iterate trough datasets:
+    # for dataset in dbpedia_datasets:
+    #     if dataset in already_processed_datasets:
+    #         logger.info(f"Skipping dataset '{dataset}' as it's already done")
+    #         continue
+    #
+    #     url = base_url + dataset
+    #     page_source = get_rendered_page_source(driver, url)
+    #     data = extract_relevant_info_from_rendered_page(page_source)
+    #
+    #     if data:
+    #         preprocessed_data = preprocess_data(data, dataset, columns_to_drop, metric_names=known_metrics)
+    #
+    #         dataset_papers_dir = os.path.join(custom_dataset_papers_dir, dataset)
+    #         create_dir_if_not_exists(Path(dataset_papers_dir))
+    #
+    #         for paper_url in preprocessed_data["PaperUrl"].unique():
+    #             logger.info(f"Processing paper '{paper_url}'")
+    #             paper_name = Path(paper_url).name
+    #             if ".pdf" not in paper_name:
+    #                 logger.warning(f"Weird paper name '{paper_name}'")
+    #                 paper_name += f".pdf"
+    #             download_pdf(paper_url, os.path.join(dataset_papers_dir, paper_name))
+    #
+    #         result['metric'] = result['metric'].str.lower()
+    #         result['Model / System'] = result['Model / System'].str.lower()
+    #         result = (
+    #             preprocessed_data.groupby("PaperName")
+    #             .apply(lambda g: g[["Dataset", "Model / System", "metric", "value"]]
+    #                    .rename(columns={
+    #                 "Model / System": "Model",
+    #                 "metric": "Metric",
+    #                 "value": "Result"
+    #             })
+    #                    .to_dict(orient="records"))
+    #             .to_dict()
+    #         )
+    #         result = create_result_dict_in_correct_format(result)
+    #         result = add_hardcoded_task_to_result_dict(result)
+    #         save_dict_to_json(result, os.path.join(dataset_papers_dir, "result.json"))
+    #
+    #     else:
+    #         logger.warning(f"Skipping dataset '{dataset}' due to lack of data")
+    #
+    # driver.quit()
