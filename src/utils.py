@@ -109,7 +109,7 @@ def extract_tables_from_markdown(md_file_path: str) -> list[pd.DataFrame]:
                 table_lines = []  # Reset for the next table
 
     if not tables:
-        return None  # No table found
+        return []  # No table found
 
     dataframes = []
     for table in tables:
@@ -216,9 +216,9 @@ def download_pdf(url, filename):
         response.raise_for_status()  # Raise an error for bad status codes
         with open(filename, "wb") as f:
             f.write(response.content)
-        print(f"Downloaded PDF as '{filename}'")
+        logger.info(f"Downloaded PDF as '{filename}'")
     except requests.exceptions.RequestException as e:
-        print(f"Failed to download PDF: {e}")
+        logger.error(f"Failed to download PDF: {e} for url; {url}")
 
 
 if __name__ == "__main__":

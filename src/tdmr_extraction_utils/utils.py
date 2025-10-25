@@ -11,7 +11,7 @@ from src.tdmr_extraction_utils.data_models import (
     PREPARED_DICT_INTO_STR_TEMPLATE, PreparedTable, TableDecisionResponse)
 from src.utils import read_json, save_dict_to_json
 from tqdm import tqdm
-
+from typing import Dict, Union
 
 def prepare_extracted_tables_for_experiment(
     extracted_tables_dict_object: list[dict],
@@ -315,3 +315,41 @@ def create_one_result_file_for_evaluation_purpose(output_dir: Path):
             "processed_tdmr_extraction_test_papers_evaluation_valid_results.json",
         ),
     )
+
+
+def chunk_markdown_file(file_path: str, chunk_size: int) -> Union[Dict[str, str], None]:
+    """
+    Reads a markdown file and splits its content into a dictionary of numbered chunks.
+
+    The content is split into chunks of approximately `chunk_size` words.
+
+    Args:
+        file_path (str): The path to the markdown (.md) file.
+        chunk_size (int): The desired number of words per chunk.
+
+    Returns:
+        Union[Dict[str, str], None]: A dictionary where keys are consecutive integers
+                                     and values are the text chunks. Returns None if
+                                     the file is not found.
+    """
+    if not os.path.exists(file_path):
+        print(f"Error: The file at path '{file_path}' does not exist.")
+        return None
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Split content into words and filter out empty strings
+        words = content.split()
+
+        chunks = {}
+        for i in range(0, len(words), chunk_size):
+            chunk = " ".join(words[i:i + chunk_size])
+            chunks[str(len(chunks))] = chunk
+
+        return chunks
+
+    except IOError as e:
+        print(f"Error reading the file: {e}")
+        return None
