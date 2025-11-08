@@ -19,6 +19,7 @@ from src.triplets.triplets_unification import (
     normalize_strings_triplets)
 from src.utils import (create_dir_if_not_exists, read_json, save_dict_to_json,
                        save_str_as_txt_file)
+from src.parsers.docling_parsers import convert_pdf_into_md_using_docling
 
 load_dotenv()
 from src.logger import logger
@@ -326,60 +327,66 @@ if __name__ == "__main__":
     #     combine_and_unique_triplets_for_a_given_paper(dir_to_save_paper_results)
     from src.utils import read_markdown_file_content
     from src.const import BENCHMARK_TABLES
-    dir_with_markdowns = "custom_dataset_papers/CronQuestions"  # "research-papers-markdwons"
+    dir_with_datasets = "custom_dataset_papers/dbpedia"  # "research-papers-markdwons"
     output_dir = (
-        f"triplets_extraction/chunk_focus_approach/{MODEL_NAME}/20_09_custom_dataset_cron_questions"
+        f"triplets_extraction/chunk_focus_approach/{MODEL_NAME}/25_10_custom_dataset_wiki_data"
     )
     create_dir_if_not_exists(Path(output_dir))
     already_processed_files = [
         paper_path.name for paper_path in Path(output_dir).iterdir()
     ]
     model_system_prompt = triplets_extraction_model_mapper[MODEL_NAME]
-    for f in Path(dir_with_markdowns).iterdir():
 
-        if f.stem in already_processed_files:
-            print(f"File has been already processed: {f.name}")
-            continue
+    for dir_with_markdowns in Path(dir_with_datasets).iterdir():
+        if dir_with_markdowns.is_dir():
+            for f in Path(dir_with_markdowns).iterdir():
 
-        # if f.stem not in BENCHMARK_TABLES:
-        #     continue
+                if f.stem in already_processed_files:
+                    print(f"File has been already processed: {f.name}")
+                    continue
 
-        if f.suffix == ".md" and "read" not in f.stem.lower():
-            logger.info(f"Analyzing file: {f.name}")
-            dir_to_save_paper_results = os.path.join(output_dir, f.stem)
-            create_dir_if_not_exists(Path(dir_to_save_paper_results))
-            file_content = read_markdown_file_content(f)
-            chunk_size = 5000
-            valid_triplets_list = []
-            valid_jsons_list = []
-            for i in range(0, len(file_content), chunk_size):
-                chunk = file_content[i:i + chunk_size]
-                model_response = get_llm_model_response(prompt=openai_gpt_oss_120b_user_prompt.format(research_paper=chunk),
-                                                        model_name=MODEL_NAME, system_prompt=model_system_prompt,
-                                                        pydantic_object_structured_output=ExtractedTriplets)
-                if model_response:
+                if f.suffix == ".pdf" and not f.with_suffix(".md").exists():
+                    logger.info(f"Processing file {f.name} for which no .md file was created yet")
+                    md_file_path = convert_pdf_into_md_using_docling(f)
+                    f = Path(md_file_path)
 
-                    if isinstance(model_response, ExtractedTriplets):
-                        model_response = model_response.extracted_triplets
 
-                    if model_response:
-                        logger.info(f"The extracted triplets for the chunk: {model_response}")
-                        valid_triplets_list.append(model_response)
+                if f.suffix == ".md" and "read" not in f.stem.lower():
+                    logger.info(f"Analyzing file: {f.name}")
+                    dir_to_save_paper_results = os.path.join(output_dir, f.stem)
+                    create_dir_if_not_exists(Path(dir_to_save_paper_results))
+                    file_content = read_markdown_file_content(f)
+                    chunk_size = 5000
+                    valid_triplets_list = []
+                    valid_jsons_list = []
+                    for i in range(0, len(file_content), chunk_size):
+                        chunk = file_content[i:i + chunk_size]
+                        model_response = get_llm_model_response(prompt=openai_gpt_oss_120b_user_prompt.format(research_paper=chunk),
+                                                                model_name=MODEL_NAME, system_prompt=model_system_prompt,
+                                                                pydantic_object_structured_output=ExtractedTriplets)
+                        if model_response:
 
-            for output_object in valid_triplets_list:
-                if isinstance(output_object, list):
-                    valid_jsons_list.extend([x.model_dump() if not isinstance(x, dict) else x for x in output_object])
-                else:
-                    valid_jsons_list.append(output_object.model_dump() if isinstance(output_object, dict) else output_object)
+                            if isinstance(model_response, ExtractedTriplets):
+                                model_response = model_response.extracted_triplets
 
-            normalized_strings_triplets = normalize_strings_triplets(valid_jsons_list)
-            unique_triplets = extract_unique_triplets_from_normalized_triplet_file(
-                normalized_strings_triplets
-            )
-            save_dict_to_json(
-                unique_triplets,
-                os.path.join(
-                    dir_to_save_paper_results,
-                    "unique_triplets.json"
-                ),
-            )
+                            if model_response:
+                                logger.info(f"The extracted triplets for the chunk: {model_response}")
+                                valid_triplets_list.append(model_response)
+
+                    for output_object in valid_triplets_list:
+                        if isinstance(output_object, list):
+                            valid_jsons_list.extend([x.model_dump() if not isinstance(x, dict) else x for x in output_object])
+                        else:
+                            valid_jsons_list.append(output_object.model_dump() if isinstance(output_object, dict) else output_object)
+
+                    normalized_strings_triplets = normalize_strings_triplets(valid_jsons_list)
+                    unique_triplets = extract_unique_triplets_from_normalized_triplet_file(
+                        normalized_strings_triplets
+                    )
+                    save_dict_to_json(
+                        unique_triplets,
+                        os.path.join(
+                            dir_to_save_paper_results,
+                            "unique_triplets.json"
+                        ),
+                    )

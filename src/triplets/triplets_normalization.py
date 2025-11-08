@@ -12,6 +12,9 @@ from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
 from src.const import BENCHMARK_TABLES
 from prompts.triplets_normalization import normalization_user_prompt, normalization_system_prompt, normalization_system_prompt_gpt_4_tubo
 from pydantic import BaseModel, Field
+import json
+
+NORMALIZED_TRIPLET_PART = {"Task": "question_answering"}
 
 MODEL_NAME = "openai-gpt-oss-120b"
 triplets_normalization_model_mapper = {"gpt-4-turbo": normalization_system_prompt_gpt_4_tubo,
@@ -41,7 +44,7 @@ def combine_extracted_triplets_dir_into_file(extracted_triplets_dir: str) -> dic
 
 
 def main(
-    path_to_extracted_triplets: str, true_dataset_path: str, output_dir_path: str
+    path_to_extracted_triplets: str, true_dataset_path: str, output_dir_path: str, keys_to_normalize: set = set()
 ) -> list[dict]:
     all_extracted_triplets_per_paper = combine_extracted_triplets_dir_into_file(
         path_to_extracted_triplets
@@ -80,7 +83,9 @@ def main(
 
         for extracted_triplet in extracted_triplets_per_paper:
 
-            normalized_triplet = {}
+            extracted_triplet = extracted_triplet if not keys_to_normalize else {k: v for k, v in extracted_triplet.items() if k in keys_to_normalize}
+
+            normalized_triplet = NORMALIZED_TRIPLET_PART
             for triplet_item in extracted_triplet:
                 try:
                     user_prompt = PromptTemplate.from_template(normalization_user_prompt).format(
@@ -194,21 +199,49 @@ def create_triplets_in_evaluation_form(triplets_normalization_output_dir: str) -
     return triplets_in_correct_from
 
 
+def load_all_json_dicts(base_dir):
+    all_dicts = []
+
+    # Iterate through all subdirectories
+    for subdir in os.listdir(base_dir):
+        subdir_path = os.path.join(base_dir, subdir)
+
+        if os.path.isdir(subdir_path):
+            # Look for the JSON file in this directory
+            for file_name in os.listdir(subdir_path):
+                if file_name.endswith('.json'):
+                    file_path = os.path.join(subdir_path, file_name)
+
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        try:
+                            data = json.load(f)
+                            # Each JSON file is a list of dicts
+                            if isinstance(data, list):
+                                all_dicts.extend(data)
+                            else:
+                                print(f"Warning: {file_path} does not contain a list, skipping.")
+                        except json.JSONDecodeError as e:
+                            print(f"Error decoding {file_path}: {e}")
+
+    return all_dicts
+
+
 if __name__ == "__main__":
     normalization_output_dir = (
-        "triplets_normalization/openai-gpt-oss-120b/chunk_focus_approach/20_09_update"
+        "triplets_normalization/openai-gpt-oss-120b/chunk_focus_approach/custom_dataset/25_10"
     )
     create_dir_if_not_exists(Path(normalization_output_dir))
 
     extracted_triplets_dir_path = (
-        "triplets_extraction/chunk_focus_approach/openai-gpt-oss-120b/20_09_custom_dataset_cron_questions"
+        "triplets_extraction/chunk_focus_approach/openai-gpt-oss-120b/25_10_custom_dataset_wiki_data"
     )
     if not Path(extracted_triplets_dir_path).exists():
         raise FileNotFoundError(f"The provided path to extracted triplets: {extracted_triplets_dir_path} is broken!")
 
-    true_dataset_path = "custom_dataset_papers/result-notebook-lm-more-general_ground_truth.json" # "leaderboard-generation/tdm_annotations.json"
+    true_dataset_path = "custom_dataset_papers/dbpedia/overall-result.json" # "leaderboard-generation/tdm_annotations.json"
+    keys_to_normalize = {"Metric", "Dataset"}
     normalized_triplets = main(
-        extracted_triplets_dir_path, true_dataset_path, normalization_output_dir
+        extracted_triplets_dir_path, true_dataset_path, normalization_output_dir, keys_to_normalize=keys_to_normalize
     )
     normalized_strings_triplets = normalize_strings_triplets(normalized_triplets)
     unique_triplets = extract_unique_triplets_from_normalized_triplet_file(
@@ -220,6 +253,6 @@ if __name__ == "__main__":
     )
     # Evaluation of normalized triplets
     current_triplets_evaluation_form = create_triplets_in_evaluation_form(normalization_output_dir)
-    ground_truth_triplets = read_json(Path("leaderboard-generation/tdm_annotations.json"))
+    ground_truth_triplets = read_json(Path(true_dataset_path))
     recall_scores, precision_scores = calculate_exact_match_on_extracted_triplets(ground_truth_triplets,
                                                                                   current_triplets_evaluation_form)
