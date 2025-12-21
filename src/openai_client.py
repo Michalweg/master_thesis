@@ -327,9 +327,10 @@ if __name__ == "__main__":
     #     combine_and_unique_triplets_for_a_given_paper(dir_to_save_paper_results)
     from src.utils import read_markdown_file_content
     from src.const import BENCHMARK_TABLES
+    benchmark_datasets = ['LC-QuAD v1', 'LC-QuAD v2', 'QALD-1', 'QALD-2']
     dir_with_datasets = "custom_dataset_papers/dbpedia"  # "research-papers-markdwons"
     output_dir = (
-        f"triplets_extraction/chunk_focus_approach/{MODEL_NAME}/25_10_custom_dataset_wiki_data"
+        f"triplets_extraction/chunk_focus_approach/{MODEL_NAME}/08_11_custom_dataset_dbpedia"
     )
     create_dir_if_not_exists(Path(output_dir))
     already_processed_files = [
@@ -339,11 +340,17 @@ if __name__ == "__main__":
 
     for dir_with_markdowns in Path(dir_with_datasets).iterdir():
         if dir_with_markdowns.is_dir():
+
+            if dir_with_markdowns.name not in benchmark_datasets:
+                logger.info(f"The provided dataset: {dir_with_markdowns} is not a part of the experiment yet!")
+                continue
+
             for f in Path(dir_with_markdowns).iterdir():
 
                 if f.stem in already_processed_files:
                     print(f"File has been already processed: {f.name}")
                     continue
+
 
                 if f.suffix == ".pdf" and not f.with_suffix(".md").exists():
                     logger.info(f"Processing file {f.name} for which no .md file was created yet")

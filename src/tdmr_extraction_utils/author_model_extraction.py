@@ -98,15 +98,15 @@ def combine_all_sections_based_json_into_one_file(
 
 
 if __name__ == "__main__":
-    user_marker: bool = False
+    user_marker: bool = False # Otherwise use docling for that purpose
     author_model_approach_experiment_dir_path = (
         "extending_results_extraction_with_author_approach"
     )
-    papers_dir = "custom_dataset_papers/CronQuestions" # os.path.join(author_model_approach_experiment_dir_path, "papers")
+    papers_dir = "custom_dataset_papers/dbpedia/LC-QuAD v1" # os.path.join(author_model_approach_experiment_dir_path, "papers")
     papers_to_analyze: list = list(Path(papers_dir).iterdir())
 
     # Setting up and creating output dir
-    author_model_extraction_dir_without_table_content = f"author_model_extraction/{MODEL_NAME}/from_each_section_22_09"
+    author_model_extraction_dir_without_table_content = f"author_model_extraction/{MODEL_NAME}/08_11_custom_dataset_dbpedia"
     create_dir_if_not_exists(Path(author_model_extraction_dir_without_table_content))
     already_processed_file = [f.name for f in Path(author_model_extraction_dir_without_table_content).iterdir() if f.suffix == ".pdf"]
 

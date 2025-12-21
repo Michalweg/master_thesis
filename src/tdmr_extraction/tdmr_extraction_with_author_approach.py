@@ -21,14 +21,14 @@ from src.tdmr_extraction_utils.data_models import (
 )
 from src.tdmr_extraction_utils.utils import (
     pick_optimal_source_table_for_given_triplet,
-    prepare_extracted_tables_for_experiment,
+    prepare_extracted_tables_for_experiment
 )
-from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
+from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json, extract_tables_and_captions_from_pdf
 from src.tdmr_extraction_utils.utils import (
     create_one_result_file,
     create_one_result_file_for_evaluation_purpose,
 )
-
+from typing import Union
 MODEL_NAME = "openai-gpt-oss-120b"
 
 SYSTEM_PROMPT_PICKING_UP_TABLEMODEL_MAPPER = {
@@ -40,7 +40,7 @@ SYSTEM_PROMPT_PICKING_UP_TABLEMODEL_MAPPER = {
 def main(
     extracted_triplet_path_dir: str,
     all_extracted_author_approach: set,
-    extracted_tables_summary_file_path: str,
+    extracted_tables_summary_file_path: Union[str, list[dict]],
     tdmr_extraction_output_dir_path: Path,
     pydantic_object: type[BaseModel],
     user_prompt: str,
@@ -48,7 +48,7 @@ def main(
     model_name: str,
 ):
     output_list = []
-    extracted_tables_and_captions = read_json(Path(extracted_tables_summary_file_path))
+    extracted_tables_and_captions = read_json(Path(extracted_tables_summary_file_path)) if isinstance(extracted_tables_summary_file_path, str) else extracted_tables_summary_file_path
 
     for author_approach in all_extracted_author_approach:
         for triplet_path in Path(extracted_triplet_path_dir).iterdir():
@@ -150,29 +150,27 @@ def define_all_unique_extracted_approaches_names(
 if __name__ == "__main__":
     ### For each analyzed paper in the dir of the paper should be inputs and outputs that led to the given result
     # Specifying a dir with papers to analyze
-    author_model_approach_experiment_dir_path = (
-        "author_model_extraction/openai-gpt-oss-120b/from_each_section_22_09"
+    author_model_extraction_output_dir_path = (
+        "author_model_extraction/openai-gpt-oss-120b/08_11_custom_dataset_dbpedia"
     )
-    papers_dir = "custom_dataset_papers/CronQuestions"  # os.path.join(author_model_approach_experiment_dir_path, "papers")
+    papers_dir = "custom_dataset_papers/dbpedia/LC-QuAD v1"  # os.path.join(author_model_extraction_output_dir_path, "papers")
     papers_to_analyze: list = [
         f for f in Path(papers_dir).iterdir() if f.suffix == ".pdf"
     ]
 
     # Specifying specific dir where all triplets for all papers are defined
     extracted_normalized_triplet_dir_path = (
-        "triplets_normalization/openai-gpt-oss-120b/chunk_focus_approach/20_09_update"
+        "triplets_normalization/openai-gpt-oss-120b/chunk_focus_approach/custom_dataset/08_11_custom_dataset_dbpedia"
     )
 
     # Specifying a dir with tables and captions
-    path_with_tables_captions = "/Users/Michal/Dokumenty_mac/MasterThesis/docling_tryout/custom_dataset_papers/CronQuestions"
+    # path_with_tables_captions = "/Users/Michal/Dokumenty_mac/MasterThesis/docling_tryout/custom_dataset_papers/CronQuestions"
 
     # Setting up output dir
     tdmr_extraction_output_dir = f"tdmr_extraction_with_author_approach/{MODEL_NAME}/from_chunk_by_chunk_table_and_value_selection_22_09"
     create_dir_if_not_exists(Path(tdmr_extraction_output_dir))
 
-    already_processed_file = [
-        f.name for f in Path(tdmr_extraction_output_dir).iterdir() if f.suffix == ".pdf"
-    ]
+    already_processed_file = [f.name for f in Path(tdmr_extraction_output_dir).iterdir()]
     create_dir_if_not_exists(Path(tdmr_extraction_output_dir))
 
     for paper_path in papers_to_analyze:
@@ -188,7 +186,7 @@ if __name__ == "__main__":
 
         # Extracting all unique values for extracted approaches
         summary_of_approach_model_algorithm_file_path_per_section = os.path.join(
-            author_model_approach_experiment_dir_path,
+            author_model_extraction_output_dir_path,
             paper_path.stem,
             "author_model_approaches.json",
         )
@@ -219,14 +217,12 @@ if __name__ == "__main__":
                 extracted_normalized_triplet_dir_path, paper_path.stem
             )
             # Specifying path to all extracted tables with captions
-            extracted_tables_file_path = os.path.join(
-                path_with_tables_captions, paper_path.stem, "result_dict.json"
-            )
+            extracted_tables = extract_tables_and_captions_from_pdf(paper_path)
 
             main(
                 extracted_triplet_path_dir,
                 all_extracted_authors_approach,
-                extracted_tables_file_path,
+                extracted_tables,
                 paper_name_output_path,
                 user_prompt=TDMR_EXTRACTION_USER_PROMPT,
                 system_prompt=TDMR_EXTRACTION_SYSTEM_PROMPT,

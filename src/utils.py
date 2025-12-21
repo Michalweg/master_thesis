@@ -10,6 +10,10 @@ import pandas as pd
 import requests
 import tiktoken
 from dotenv import load_dotenv
+from io import StringIO
+from docling.datamodel.base_models import InputFormat
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
 
 from src.logger import logger
 
@@ -219,6 +223,78 @@ def download_pdf(url, filename):
         logger.info(f"Downloaded PDF as '{filename}'")
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to download PDF: {e} for url; {url}")
+
+
+
+def find_extracted_texts_given_cref(extracted_texts: list, cref: str) -> str:
+    for text_element in extracted_texts:
+        if text_element.self_ref == cref:
+            return text_element.text
+    return ''
+
+def extract_tables_and_captions_from_pdf(pdf_path: str, output_dir: str = "") -> list[dict]:
+    """
+    Extract tables and captions from a PDF file using Docling,
+    and save results as CSVs + result_dict.json in the output directory.
+
+    Args:
+        pdf_path (str): Path to the PDF file.
+        output_dir (str): Directory to store CSVs and JSON results.
+
+    Returns:
+        list[dict]: List of dictionaries with 'caption' and 'data' keys.
+    """
+    pdf_path = Path(pdf_path)
+    output_dir = Path(output_dir)
+    create_dir_if_not_exists(output_dir)
+
+    # Set up the Docling pipeline
+    pipeline_options = PdfPipelineOptions(do_table_structure=True)
+    pipeline_options.table_structure_options.mode = TableFormerMode.ACCURATE
+    doc_converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
+
+    # Convert PDF
+    result = doc_converter.convert(pdf_path)
+    extracted_texts = result.document.texts
+
+    paper_dir = output_dir / pdf_path.stem
+    create_dir_if_not_exists(paper_dir)
+
+    tables_captions_list = []
+
+    # Iterate over extracted tables
+    for table_ix, table in enumerate(result.document.tables):
+        table_caption_str = ""
+        table_df: pd.DataFrame = table.export_to_dataframe()
+
+        # Extract table caption text(s)
+        for table_caption in table.captions:
+            extracted_caption = find_extracted_texts_given_cref(extracted_texts, table_caption.cref)
+            table_caption_str += extracted_caption
+
+        # Save table as CSV
+        csv_path = paper_dir / f"{table_ix}.csv"
+        table_df.to_csv(csv_path, index=False)
+
+        # Also save CSV as text string in JSON
+        csv_buffer = StringIO()
+        table_df.to_csv(csv_buffer, index=False)
+
+        tables_captions_list.append({
+            "caption": table_caption_str,
+            "data": csv_buffer.getvalue()
+        })
+
+    # Save final JSON result
+    json_path = paper_dir / "result_dict.json"
+    if output_dir:
+        save_dict_to_json(tables_captions_list, json_path)
+
+    return tables_captions_list
 
 
 if __name__ == "__main__":

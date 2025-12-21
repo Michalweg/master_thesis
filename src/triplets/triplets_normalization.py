@@ -228,12 +228,12 @@ def load_all_json_dicts(base_dir):
 
 if __name__ == "__main__":
     normalization_output_dir = (
-        "triplets_normalization/openai-gpt-oss-120b/chunk_focus_approach/custom_dataset/25_10"
+        "triplets_normalization/openai-gpt-oss-120b/chunk_focus_approach/custom_dataset/08_11_custom_dataset_dbpedia"
     )
     create_dir_if_not_exists(Path(normalization_output_dir))
 
     extracted_triplets_dir_path = (
-        "triplets_extraction/chunk_focus_approach/openai-gpt-oss-120b/25_10_custom_dataset_wiki_data"
+        "triplets_extraction/chunk_focus_approach/openai-gpt-oss-120b/08_11_custom_dataset_dbpedia"
     )
     if not Path(extracted_triplets_dir_path).exists():
         raise FileNotFoundError(f"The provided path to extracted triplets: {extracted_triplets_dir_path} is broken!")
