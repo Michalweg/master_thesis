@@ -202,7 +202,7 @@ if __name__ == "__main__":
     llm_parsed_tables_dir = Path("../llm_parsed_tables/llama_3_1")
     paper_output_dir_name = "11_11_2024_fixed_section_extraction_llama3.1"
 
-    for paper_path in Path("../../papers/research_papers").iterdir():
+    for paper_path in Path("../../archive/papers/research_papers").iterdir():
         if paper_path.suffix == ".pdf":
             paper_name_output_path = Path(
                 f"../parsing_experiments/triplets_extraction/from_each_section_without_table/{paper_path.stem}"
