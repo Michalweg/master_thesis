@@ -328,7 +328,7 @@ if __name__ == "__main__":
     from src.utils import read_markdown_file_content
     from src.const import BENCHMARK_TABLES
     benchmark_datasets = ['LC-QuAD v1', 'LC-QuAD v2', 'QALD-1', 'QALD-2']
-    dir_with_datasets = "custom_dataset_papers/dbpedia"  # "research-papers-markdwons"
+    dir_with_datasets = "custom_dataset_papers/dbpedia"  # "leaderboard-generation-papers-markdowns"
     output_dir = (
         f"triplets_extraction/chunk_focus_approach/{MODEL_NAME}/08_11_custom_dataset_dbpedia"
     )

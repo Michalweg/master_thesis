@@ -36,7 +36,7 @@ from src.tdmr_extraction_utils.utils import (
     pick_optimal_source_table_for_given_triplet,
 )
 
-MODEL_NAME = "gpt-4-turbo"
+MODEL_NAME = "openai-gpt-oss-120b"
 
 SYSTEM_PROMPT_RESULTS_EXTRACTION_MODEL_MAPPER = {
     "gpt-4-turbo": TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value_GPT4_turbo,
@@ -85,10 +85,10 @@ def extract_result_from_given_table_for_triplet(
         logger.info(f"Response for assigning value to the triplet: {response}")
         if response:
             response = {
-                "Task": response.task,
-                "Dataset": response.dataset,
-                "Metric": response.metric,
-                "Result": str(response.result),
+                "Task": response.Task,
+                "Dataset": response.Dataset,
+                "Metric": response.Metric,
+                "Result": str(response.Result),
             }
     else:
         parser = JsonOutputParser(pydantc_object=result_object)
@@ -165,7 +165,7 @@ def main(
                         ][0]
                     except Exception as e:
                         logger.error(
-                            f"The provided prepared table is invalid: {str(e)}, {triplet}, {paper_path}"
+                            f"The provided prepared table is invalid: {str(e)}, {triplet}, {triplet_path}"
                         )
                         continue
                     system_prompt_per_model_result_extraction = (

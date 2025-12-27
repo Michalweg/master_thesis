@@ -69,7 +69,7 @@ def main(
 
 
         if paper_name in already_processed_paper_names:
-            logger.warning(f"The analyzed file was already processed: {paper_name}")
+            logger.info(f"The analyzed file was already processed: {paper_name}")
             continue
 
         print(f"Analyzed paper name: {paper_name}")
@@ -85,7 +85,7 @@ def main(
 
             extracted_triplet = extracted_triplet if not keys_to_normalize else {k: v for k, v in extracted_triplet.items() if k in keys_to_normalize}
 
-            normalized_triplet = NORMALIZED_TRIPLET_PART
+            normalized_triplet = {"Task": "question_answering"} if keys_to_normalize else {"Task": "question_answering"}
             for triplet_item in extracted_triplet:
                 try:
                     user_prompt = PromptTemplate.from_template(normalization_user_prompt).format(
