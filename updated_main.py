@@ -587,7 +587,7 @@ if __name__ == "__main__":
         "true_dataset_path": "leaderboard-generation/tdm_annotations.json",
         "base_output_dir": "pipeline_results",
         "model_name": "openai-gpt-oss-120b",
-        "keys_to_normalize": {"Metric", "Dataset", "Task"},
+        "keys_to_normalize": set(),
         "chunk_size": 5000,
         "resume_from_dir": "24_12_2025"
     }
