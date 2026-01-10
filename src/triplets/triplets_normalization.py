@@ -43,6 +43,27 @@ def combine_extracted_triplets_dir_into_file(extracted_triplets_dir: str) -> dic
     return combined_triplets_dict
 
 
+def create_labels_dict(true_dataset: dict) -> dict:
+    """
+    Create a dictionary of unique labels from the true dataset.
+
+    Args:
+        true_dataset: Dictionary containing ground truth TDM annotations per paper
+
+    Returns:
+        Dictionary with sets of unique Task, Dataset, and Metric labels
+    """
+    labels_dict = {"Task": set(), "Dataset": set(), "Metric": set()}
+
+    for paper in true_dataset:
+        for item in true_dataset[paper]["TDMs"]:
+            labels_dict["Task"].add(item["Task"])
+            labels_dict["Dataset"].add(item["Dataset"])
+            labels_dict["Metric"].add(item["Metric"])
+
+    return labels_dict
+
+
 def main(
     path_to_extracted_triplets: str, true_dataset_path: str, output_dir_path: str, keys_to_normalize: set = set()
 ) -> list[dict]:
@@ -51,25 +72,14 @@ def main(
     )  # read_json(Path(os.path.join(path_to_extracted_triplets, "unique_triplets.json")))
     true_dataset = read_json(Path(true_dataset_path))
 
-    labels_dict = {"Task": set(), "Dataset": set(), "Metric": set()}
+    labels_dict = create_labels_dict(true_dataset)
     normalized_triplets = []
-
-    for paper in true_dataset:
-        for item in true_dataset[paper]["TDMs"]:
-            labels_dict["Task"].add(item["Task"])
-            labels_dict["Dataset"].add(item["Dataset"])
-            labels_dict["Metric"].add(item["Metric"])
 
     already_processed_paper_names = [x.name for x in Path(output_dir_path).iterdir()]
     for paper_name in tqdm(all_extracted_triplets_per_paper):
 
-
-        # if paper_name not in BENCHMARK_TABLES:
-        #     continue
-
-
         if paper_name in already_processed_paper_names:
-            logger.warning(f"The analyzed file was already processed: {paper_name}")
+            logger.info(f"The analyzed file was already processed: {paper_name}")
             continue
 
         print(f"Analyzed paper name: {paper_name}")
@@ -84,8 +94,7 @@ def main(
         for extracted_triplet in extracted_triplets_per_paper:
 
             extracted_triplet = extracted_triplet if not keys_to_normalize else {k: v for k, v in extracted_triplet.items() if k in keys_to_normalize}
-
-            normalized_triplet = NORMALIZED_TRIPLET_PART
+            normalized_triplet = {}
             for triplet_item in extracted_triplet:
                 try:
                     user_prompt = PromptTemplate.from_template(normalization_user_prompt).format(
