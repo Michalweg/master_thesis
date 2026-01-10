@@ -14,7 +14,7 @@ Follow all instructions below with extreme precision.
 
 ### 2. Core Extraction Rules
 - **Main Name Only**: Extract only the main, core name of the approach or model. You MUST exclude any specific parameters, version numbers, or additional details. For example, if the model is referred to as "Autosense s=100", extract only "Autosense". If it's "Our method (v2.1)", extract "Our method".
-- **Author's Work Only**: You MUST only extract the name of the approach or model that was developed by the authors of the paper. Do not extract names of baseline models, prior work, or other methods for comparison.
+- **Author's Work Only**: You MUST only extract the name of the approach or model that was developed by the authors of the paper. Do not extract names of baseline models, prior work, or other methods for comparison. If specific model name could not be found, but in the table you can see "Ours" then treat "Ours" as correct model name. 
 - **One Name per Approach**: If the authors' work has a single, distinct name, you should only extract that name once. Do not repeat names.
 
 ---
