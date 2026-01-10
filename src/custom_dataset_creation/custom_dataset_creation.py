@@ -5,6 +5,7 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
+import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -13,6 +14,37 @@ from src.logger import logger
 from src.utils import (create_dir_if_not_exists, download_pdf,
                        extract_tables_from_markdown, save_dict_to_json, read_json)
 from pydantic import BaseModel, Field
+
+
+def download_github_file(github_url, output_path):
+    """
+    Download a file from GitHub and save it to a specified path.
+
+    Args:
+        github_url: GitHub blob URL (e.g., https://github.com/KGQA/leaderboard/blob/v2.0/dbpedia/LC-QuAD%20v1.md)
+        output_path: Full path where the file should be saved (including filename)
+    """
+    # Convert GitHub blob URL to raw URL
+    if "github.com" in github_url and "/blob/" in github_url:
+        raw_url = github_url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+    else:
+        raw_url = github_url
+
+    logger.info(f"Downloading from: {raw_url}")
+
+    # Download the file
+    response = requests.get(raw_url)
+    response.raise_for_status()  # Raise an error for bad status codes
+
+    # Create output directory if it doesn't exist
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # Save the file
+    with open(output_path, 'wb') as f:
+        f.write(response.content)
+
+    logger.info(f"File saved to: {output_path}")
+    return output_path
 
 
 def setup():
@@ -99,7 +131,7 @@ def preprocess_table(table: pd.DataFrame) -> pd.DataFrame:
 
 
 def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: str,columns_to_drop: list[str],
-                                       known_metrics:list[str], papers_dir: str) -> dict:
+                                       known_metrics:list[str], papers_dir: str) -> tuple[dict, list[dict]]:
     tables = extract_tables_from_markdown(markdown_file_path)
     if not tables:
         table = pd.read_csv(markdown_file_path, sep="|")
@@ -108,6 +140,8 @@ def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: st
         table.columns = [col.strip() for col in table.columns]
         tables = [table]
     tables_results = {}
+    failed_downloads = []
+
     for table in tables:
         table = preprocess_table(table)
         preprocessed_table = preprocess_data(table, dataset_name=dataset_name, columns_to_drop=columns_to_drop, metric_names=known_metrics)
@@ -118,7 +152,18 @@ def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: st
             if ".pdf" not in paper_name:
                 logger.warning(f"Weird paper name '{paper_name}'")
                 paper_name += f".pdf"
-            download_pdf(paper_url, os.path.join(papers_dir, dataset_name, paper_name))
+
+            try:
+                download_pdf(paper_url, os.path.join(papers_dir, dataset_name, paper_name))
+            except Exception as e:
+                error_message = str(e)
+                logger.error(f"Failed to download {paper_name} from {paper_url}: {error_message}")
+                failed_downloads.append({
+                    "paper_name": paper_name,
+                    "paper_url": paper_url,
+                    "error": error_message
+                })
+
         result = (
             preprocessed_table.groupby("PaperName")
             .apply(lambda g: g[["Dataset", model_system_column_name, "Metric", "Result", "PaperUrl"]]
@@ -131,7 +176,7 @@ def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: st
             .to_dict()
         )
         tables_results.update(result)
-    return tables_results
+    return tables_results, failed_downloads
 
 
 def create_result_dict_in_correct_format(result: dict) -> dict:
@@ -157,8 +202,8 @@ def add_hardcoded_task_to_result_dict(result: dict, hardcoded_task_name: str = "
 if __name__ == "__main__":
     columns_to_drop = ["Year", "Language", "Reported by", "id"]
     known_metrics = ["F1", "Precision", "Recall", "Hits@1", "Hits@10", "Precision@1", "MRR", "Hits@5", "Accuracy"]
-    custom_dataset_papers_dir = "custom_dataset_papers"
-    manual_work_needed = ["Compositional Wikidata Questions"]
+    custom_dataset_papers_dir = "custom_dataset_papers_refined"
+    create_dir_if_not_exists(Path(custom_dataset_papers_dir))
     analyzed_knowledge_graph = "dbpedia"
 
     # for paper in Path(custom_dataset_papers_dir).iterdir():
@@ -170,13 +215,20 @@ if __name__ == "__main__":
     #         save_dict_to_json(correct_result_dict, result_file_path)
 
     ### MARKDOWN APPROACH ###
-    datasets_for_markdown = ["QALD-9-Plus-DBpedia"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
+    datasets_for_markdown = ["LC-QuAD v1"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
     for dataset in datasets_for_markdown:
         markdown_file = os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph, dataset, dataset + ".md")
-        preprocessed_dict = preprocess_md_file_from_repository(markdown_file, dataset_name=dataset, columns_to_drop=columns_to_drop, known_metrics=known_metrics, papers_dir=os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph))
+        download_github_file("https://github.com/KGQA/leaderboard/blob/v2.0/dbpedia/LC-QuAD%20v1.md", markdown_file)
+        preprocessed_dict, failed_downloads = preprocess_md_file_from_repository(markdown_file, dataset_name=dataset, columns_to_drop=columns_to_drop, known_metrics=known_metrics, papers_dir=os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph))
         result = create_result_dict_in_correct_format(preprocessed_dict)
         result = add_hardcoded_task_to_result_dict(result)
         save_dict_to_json(result, Path(markdown_file).with_suffix(".json"))
+
+        # Save failed downloads if there are any
+        if failed_downloads:
+            failed_downloads_file = os.path.join(os.path.dirname(markdown_file), "failed_downloads.json")
+            save_dict_to_json(failed_downloads, failed_downloads_file)
+            logger.info(f"Saved {len(failed_downloads)} failed downloads to {failed_downloads_file}")
 
 
 
