@@ -87,7 +87,7 @@ def main(
                         ][0]
                     except Exception as e:
                         logger.error(
-                            f"The provided prepared table is invalid: {str(e)}, {triplet}, {paper_path}"
+                            f"The provided prepared table is invalid: {str(e)}, {triplet}, {extracted_triplet_path_dir}"
                         )
                         continue
 
