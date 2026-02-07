@@ -9,12 +9,12 @@ from src.triplets.triplets_unification import (
     extract_unique_triplets_from_normalized_triplet_file, normalize_string,
     normalize_strings_triplets)
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
-from src.const import BENCHMARK_TABLES
+from src.const import BENCHMARK_TABLES, TASK_NAME
 from prompts.triplets_normalization import normalization_user_prompt, normalization_system_prompt, normalization_system_prompt_gpt_4_tubo
 from pydantic import BaseModel, Field
 import json
 
-NORMALIZED_TRIPLET_PART = {"Task": "question_answering"}
+NORMALIZED_TRIPLET_PART = {"Task": TASK_NAME}
 
 MODEL_NAME = "openai-gpt-oss-120b"
 triplets_normalization_model_mapper = {"gpt-4-turbo": normalization_system_prompt_gpt_4_tubo,
@@ -65,7 +65,7 @@ def create_labels_dict(true_dataset: dict) -> dict:
 
 
 def main(
-    path_to_extracted_triplets: str, true_dataset_path: str, output_dir_path: str, keys_to_normalize: set = set()
+    path_to_extracted_triplets: str, true_dataset_path: str, output_dir_path: str, keys_to_normalize: set = {"Task", "Dataset", "Metric"},
 ) -> list[dict]:
     all_extracted_triplets_per_paper = combine_extracted_triplets_dir_into_file(
         path_to_extracted_triplets
@@ -93,9 +93,8 @@ def main(
 
         for extracted_triplet in extracted_triplets_per_paper:
 
-            extracted_triplet = extracted_triplet if not keys_to_normalize else {k: v for k, v in extracted_triplet.items() if k in keys_to_normalize}
-            normalized_triplet = {}
-            for triplet_item in extracted_triplet:
+            normalized_triplet = {k: NORMALIZED_TRIPLET_PART[k] for k, v in extracted_triplet.items() if k not in keys_to_normalize}
+            for triplet_item in keys_to_normalize:
                 try:
                     user_prompt = PromptTemplate.from_template(normalization_user_prompt).format(
                         data_item=extracted_triplet[triplet_item],
@@ -117,7 +116,7 @@ def main(
                         else:
                             logger.warning(
                                 f"Model could not find the match for the {extracted_triplet[triplet_item]} within {labels_dict[triplet_item]}"
-                                f"for paper {paper_name} and triplet: {extracted_triplet}"
+                                f" for paper {paper_name} and triplet: {extracted_triplet}"
                             )
                             logger.warning(response)
 

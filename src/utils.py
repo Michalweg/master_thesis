@@ -112,6 +112,10 @@ def extract_tables_from_markdown(md_file_path: str) -> list[pd.DataFrame]:
                 tables.append(table_lines)
                 table_lines = []  # Reset for the next table
 
+    # Handle case where table ends at the end of the file
+    if table_lines:
+        tables.append(table_lines)
+
     if not tables:
         return []  # No table found
 
@@ -214,15 +218,15 @@ def download_pdf(url, filename):
     Args:
         url (str): The URL of the PDF to download.
         filename (str): The local filename to save the PDF as.
+
+    Raises:
+        requests.exceptions.RequestException: If the download fails
     """
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an error for bad status codes
-        with open(filename, "wb") as f:
-            f.write(response.content)
-        logger.info(f"Downloaded PDF as '{filename}'")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to download PDF: {e} for url; {url}")
+    response = requests.get(url)
+    response.raise_for_status()  # Raise an error for bad status codes
+    with open(filename, "wb") as f:
+        f.write(response.content)
+    logger.info(f"Downloaded PDF as '{filename}'")
 
 
 
@@ -231,6 +235,84 @@ def find_extracted_texts_given_cref(extracted_texts: list, cref: str) -> str:
         if text_element.self_ref == cref:
             return text_element.text
     return ''
+
+def convert_pdfs_to_markdown_in_directory(
+    input_dir: Union[str, Path],
+    output_dir: Union[str, Path],
+    skip_existing: bool = True,
+) -> list[str]:
+    """
+    Convert all PDF files in a directory to markdown using Docling.
+
+    Args:
+        input_dir (str | Path): Directory containing PDF files to convert
+        output_dir (str | Path): Directory where .md files will be saved
+        skip_existing (bool): If True, skip PDFs that already have corresponding .md files in output_dir
+
+    Returns:
+        list[str]: List of paths to created markdown files
+    """
+    from src.parsers.docling_parsers import convert_pdf_into_md_using_docling
+    import shutil
+
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+
+    if not input_dir.exists():
+        logger.error(f"Input directory does not exist: {input_dir}")
+        raise ValueError(f"Input directory does not exist: {input_dir}")
+
+    if not input_dir.is_dir():
+        logger.error(f"Input path is not a directory: {input_dir}")
+        raise ValueError(f"Input path is not a directory: {input_dir}")
+
+    # Create output directory if it doesn't exist
+    create_dir_if_not_exists(output_dir)
+
+    # Find all PDF files in the directory
+    pdf_files = list(input_dir.glob("*.pdf"))
+
+    if not pdf_files:
+        logger.warning(f"No PDF files found in directory: {input_dir}")
+        return []
+
+    logger.info(f"Found {len(pdf_files)} PDF files in {input_dir}")
+    logger.info(f"Output directory: {output_dir}")
+
+    created_md_files = []
+    skipped_files = []
+
+    for pdf_path in pdf_files:
+        # Define output markdown path in the output directory
+        output_md_path = output_dir / f"{pdf_path.stem}.md"
+
+        # Skip if markdown file already exists in output directory and skip_existing is True
+        if skip_existing and output_md_path.exists():
+            logger.info(f"Skipping {pdf_path.name} - markdown file already exists in output directory")
+            skipped_files.append(pdf_path.name)
+            continue
+
+        try:
+            logger.info(f"Converting {pdf_path.name} to markdown...")
+            # Convert PDF to markdown (this creates .md in the same dir as PDF)
+            temp_md_file_path = convert_pdf_into_md_using_docling(pdf_path)
+
+            # Move the created .md file to the output directory
+            shutil.move(temp_md_file_path, output_md_path)
+
+            created_md_files.append(str(output_md_path))
+            logger.info(f"Successfully converted {pdf_path.name} -> {output_md_path.name}")
+        except Exception as e:
+            logger.error(f"Error converting {pdf_path.name}: {str(e)}")
+            continue
+
+    logger.info(f"Conversion complete:")
+    logger.info(f"  - Created: {len(created_md_files)} markdown files")
+    logger.info(f"  - Skipped: {len(skipped_files)} files (already had .md)")
+    logger.info(f"  - Failed: {len(pdf_files) - len(created_md_files) - len(skipped_files)} files")
+
+    return created_md_files
+
 
 def extract_tables_and_captions_from_pdf(pdf_path: str, output_dir: str = "") -> list[dict]:
     """
