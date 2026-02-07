@@ -715,6 +715,9 @@ def extract_tdmr_results_with_author_approach(
         papers_dir: Directory containing PDF papers
         author_model_extraction_dir: Directory with author model extraction results
         output_dir: Directory to save TDMR extraction results
+        tables_output_dir: Directory containing pre-extracted tables (from Step 0b).
+                          If provided, uses pre-extracted tables from this location.
+                          If None, extracts tables on-the-fly to paper_output_dir.
         model_name: LLM model name to use
 
     Returns:
@@ -852,8 +855,20 @@ def extract_tdmr_results_with_author_approach(
 
             logger.info(f"Found {len(all_extracted_authors_approach)} unique author approaches for {paper_name}")
 
-            # Extract tables from PDF
-            extracted_tables = extract_tables_and_captions_from_pdf(str(paper_pdf_path), str(paper_output_dir / "tables"))
+            # Use pre-extracted tables from tables_output_dir (created in Step 0b)
+            if tables_output_dir:
+                tables_paper_dir = tables_output_dir / paper_name
+                tables_result_file = tables_paper_dir / "result_dict.json"
+                if tables_result_file.exists():
+                    extracted_tables = str(tables_result_file)
+                    logger.info(f"Using pre-extracted tables from {tables_result_file}")
+                else:
+                    logger.warning(f"No pre-extracted tables found for {paper_name}, extracting now...")
+                    extracted_tables = extract_tables_and_captions_from_pdf(str(paper_pdf_path), str(tables_output_dir))
+            else:
+                # Fallback: extract tables to paper output directory
+                logger.info(f"No tables_output_dir provided, extracting tables for {paper_name}...")
+                extracted_tables = extract_tables_and_captions_from_pdf(str(paper_pdf_path), str(paper_output_dir / "tables"))
 
             # Run TDMR extraction with author approach
             extract_tdmr_with_author(
@@ -985,6 +1000,44 @@ def run_complete_pipeline_with_authors_extension(
             markdown_files_dir = str(markdown_output_dir)
             logger.info(f"Markdown files created in: {markdown_files_dir}")
 
+        # Extract tables from PDFs (Step 0b - matching run_complete_pipeline)
+        tables_output_dir = pdf_files_path / "tables"
+        if not tables_output_dir.exists() or not list(tables_output_dir.glob("*/result_dict.json")):
+            logger.info("=" * 80)
+            logger.info("STEP 0b: Extracting Tables from PDFs")
+            logger.info("=" * 80)
+
+            create_dir_if_not_exists(tables_output_dir)
+
+            pdf_files = list(pdf_files_path.glob("*.pdf"))
+            logger.info(f"Found {len(pdf_files)} PDF files to extract tables from")
+
+            for pdf_file in tqdm(pdf_files, desc="Extracting tables from PDFs"):
+                paper_tables_dir = tables_output_dir / pdf_file.stem
+                result_dict_path = paper_tables_dir / "result_dict.json"
+
+                # Skip if already exists
+                if result_dict_path.exists():
+                    logger.info(f"Skipping {pdf_file.name} - tables already extracted")
+                    continue
+
+                try:
+                    logger.info(f"Extracting tables from {pdf_file.name}...")
+                    extract_tables_and_captions_from_pdf(
+                        pdf_path=str(pdf_file),
+                        output_dir=str(tables_output_dir)
+                    )
+                    logger.info(f"Successfully extracted tables from {pdf_file.name}")
+                except Exception as e:
+                    logger.error(f"Error extracting tables from {pdf_file.name}: {str(e)}")
+                    continue
+
+            logger.info(f"Tables extracted to: {tables_output_dir}")
+        else:
+            logger.info(f"Tables directory already exists at: {tables_output_dir}")
+    else:
+        tables_output_dir = None
+
     # Validate that we have the required directories
     if not markdown_files_dir:
         if not papers_dir:
@@ -1052,7 +1105,7 @@ def run_complete_pipeline_with_authors_extension(
                 author_model_extraction_dir=Path(author_model_extraction_dir),
                 output_dir=tdmr_output_dir,
                 model_name=model_name,
-                tables_output_dir=markdown_files_path
+                tables_output_dir=tables_output_dir,
             )
 
             # Create consolidated result files

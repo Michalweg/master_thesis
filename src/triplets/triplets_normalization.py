@@ -9,12 +9,12 @@ from src.triplets.triplets_unification import (
     extract_unique_triplets_from_normalized_triplet_file, normalize_string,
     normalize_strings_triplets)
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
-from src.const import BENCHMARK_TABLES
+from src.const import BENCHMARK_TABLES, TASK_NAME
 from prompts.triplets_normalization import normalization_user_prompt, normalization_system_prompt, normalization_system_prompt_gpt_4_tubo
 from pydantic import BaseModel, Field
 import json
 
-NORMALIZED_TRIPLET_PART = {"Task": "question_answering"}
+NORMALIZED_TRIPLET_PART = {"Task": TASK_NAME}
 
 MODEL_NAME = "openai-gpt-oss-120b"
 triplets_normalization_model_mapper = {"gpt-4-turbo": normalization_system_prompt_gpt_4_tubo,

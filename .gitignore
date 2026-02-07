@@ -5,7 +5,7 @@ venv/
 .idea/
 *.pyc
 parsing_experiments/
-notebooks/lama_parse_notebook.ipynb
+archive/notebooks/lama_parse_notebook.ipynb
 llm_parsed_tables/
 .env
 manual_created_markdowns_for_prompt_design

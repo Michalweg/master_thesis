@@ -10,10 +10,46 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
+from PyPDF2 import PdfReader
+
+from src.const import TASK_NAME
 from src.logger import logger
 from src.utils import (create_dir_if_not_exists, download_pdf,
                        extract_tables_from_markdown, save_dict_to_json, read_json)
 from pydantic import BaseModel, Field
+
+
+def is_pdf_readable(pdf_path: str) -> tuple[bool, str]:
+    """
+    Check if a PDF file can be opened and read.
+
+    Returns:
+        tuple: (is_readable, error_message)
+    """
+    try:
+        with open(pdf_path, 'rb') as f:
+            reader = PdfReader(f)
+            # Try to access the number of pages to verify the PDF is valid
+            _ = len(reader.pages)
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+"""
+===================================================================================
+INSTRUCTIONS FOR RUNNING THIS CODE:
+===================================================================================
+Before running this script, you need to make the following changes:
+
+1. CHANGE THE DATASETS_FOR_MARKDOWN VARIABLE:
+   - Locate the `datasets_for_markdown` variable in the `create_custom_data` function
+   - Update it with the list of datasets you want to process
+   - Example: datasets_for_markdown = ["LC-QuAD v2", "QALD-9"]
+
+2. CHANGE THE LINK IN download_github_file FUNCTION CALL:
+   - Update the GitHub URL in the call to `download_github_file` to point to
+     the correct leaderboard markdown file you want to download
+"""
 
 
 def download_github_file(github_url, output_path):
@@ -153,8 +189,22 @@ def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: st
                 logger.warning(f"Weird paper name '{paper_name}'")
                 paper_name += f".pdf"
 
+            pdf_path = os.path.join(papers_dir, dataset_name, paper_name)
             try:
-                download_pdf(paper_url, os.path.join(papers_dir, dataset_name, paper_name))
+                download_pdf(paper_url, pdf_path)
+                # Verify the PDF can be opened
+                is_readable, read_error = is_pdf_readable(pdf_path)
+                if not is_readable:
+                    logger.error(f"PDF {paper_name} downloaded but cannot be opened: {read_error}")
+                    failed_downloads.append({
+                        "paper_name": paper_name,
+                        "paper_url": paper_url,
+                        "error": f"PDF unreadable: {read_error}"
+                    })
+                    # Delete the unreadable PDF
+                    if os.path.exists(pdf_path):
+                        os.remove(pdf_path)
+                        logger.info(f"Deleted unreadable PDF: {pdf_path}")
             except Exception as e:
                 error_message = str(e)
                 logger.error(f"Failed to download {paper_name} from {paper_url}: {error_message}")
@@ -176,6 +226,12 @@ def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: st
             .to_dict()
         )
         tables_results.update(result)
+
+    # Exclude papers that failed to download from the result
+    # Normalize names by removing .pdf extension for comparison (handles inconsistent naming)
+    failed_paper_names = {download["paper_name"].replace(".pdf", "") for download in failed_downloads}
+    tables_results = {k: v for k, v in tables_results.items() if k.replace(".pdf", "") not in failed_paper_names}
+
     return tables_results, failed_downloads
 
 
@@ -192,7 +248,7 @@ def create_result_dict_in_correct_format(result: dict) -> dict:
                                          "TDMs": result[paper_name]}
     return correct_result
 
-def add_hardcoded_task_to_result_dict(result: dict, hardcoded_task_name: str = "question answering") -> dict:
+def add_hardcoded_task_to_result_dict(result: dict, hardcoded_task_name: str = TASK_NAME) -> dict: # MOVE IT TO CONST.py
     for paper_name in result.keys():
         for i, papers_tdm in enumerate(result[paper_name]["TDMs"]):
             result[paper_name]["TDMs"][i]["Task"] = hardcoded_task_name
@@ -206,19 +262,10 @@ if __name__ == "__main__":
     create_dir_if_not_exists(Path(custom_dataset_papers_dir))
     analyzed_knowledge_graph = "dbpedia"
 
-    # for paper in Path(custom_dataset_papers_dir).iterdir():
-    #     if paper.is_dir():
-    #         result_file_path = paper.joinpath("result.json")
-    #         result_dict = read_json(result_file_path)
-    #         correct_result_dict = create_result_dict_in_correct_format(result_dict)
-    #         correct_result_dict = add_hardcoded_task_to_result_dict(correct_result_dict)
-    #         save_dict_to_json(correct_result_dict, result_file_path)
-
-    ### MARKDOWN APPROACH ###
-    datasets_for_markdown = ["LC-QuAD v1"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
+    datasets_for_markdown = ["QALD-1"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
     for dataset in datasets_for_markdown:
         markdown_file = os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph, dataset, dataset + ".md")
-        download_github_file("https://github.com/KGQA/leaderboard/blob/v2.0/dbpedia/LC-QuAD%20v1.md", markdown_file)
+        download_github_file("https://github.com/KGQA/leaderboard/blob/v2.0/dbpedia/QALD-1.md", markdown_file)
         preprocessed_dict, failed_downloads = preprocess_md_file_from_repository(markdown_file, dataset_name=dataset, columns_to_drop=columns_to_drop, known_metrics=known_metrics, papers_dir=os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph))
         result = create_result_dict_in_correct_format(preprocessed_dict)
         result = add_hardcoded_task_to_result_dict(result)
@@ -229,65 +276,3 @@ if __name__ == "__main__":
             failed_downloads_file = os.path.join(os.path.dirname(markdown_file), "failed_downloads.json")
             save_dict_to_json(failed_downloads, failed_downloads_file)
             logger.info(f"Saved {len(failed_downloads)} failed downloads to {failed_downloads_file}")
-
-
-
-
-    ### SELENIUM APPROACH ###
-    # knowledge_graph_name = "dbpedia"
-    # custom_dataset_papers_dir = os.path.join(custom_dataset_papers_dir, knowledge_graph_name)
-    # base_url = f"https://kgqa.github.io/leaderboard/datasets/{knowledge_graph_name}/"
-    # wiki_datasets = ["MKQA", "RuBQ-v2", "CronQuestions", "Mintaka", "SimpleQuestionsWikidata", "TimeQuestions - Explicit",
-    #             "TimeQuestions - Implicit", "TimeQuestions - Oridinal", "TimeQuestions - Overall",
-    #             "TimeQuestions - Temporal Answer", "QALD-9-Plus-Wikidata"]
-    # dbpedia_datasets = ["LC-QuAD v1", "LC-QuAD v2", "QALD-1", "QALD-2", "QALD-3", "QALD-4", "QALD-5", "QALD-6", "QALD-7", "QALD-8", "rewordQALD9", "QALD-9"]
-    #
-    # driver = setup()
-    #
-    # already_processed_datasets = [dir_name for dir_name in os.listdir(custom_dataset_papers_dir)]
-    #
-    # # Iterate trough datasets:
-    # for dataset in dbpedia_datasets:
-    #     if dataset in already_processed_datasets:
-    #         logger.info(f"Skipping dataset '{dataset}' as it's already done")
-    #         continue
-    #
-    #     url = base_url + dataset
-    #     page_source = get_rendered_page_source(driver, url)
-    #     data = extract_relevant_info_from_rendered_page(page_source)
-    #
-    #     if data:
-    #         preprocessed_data = preprocess_data(data, dataset, columns_to_drop, metric_names=known_metrics)
-    #
-    #         dataset_papers_dir = os.path.join(custom_dataset_papers_dir, dataset)
-    #         create_dir_if_not_exists(Path(dataset_papers_dir))
-    #
-    #         for paper_url in preprocessed_data["PaperUrl"].unique():
-    #             logger.info(f"Processing paper '{paper_url}'")
-    #             paper_name = Path(paper_url).name
-    #             if ".pdf" not in paper_name:
-    #                 logger.warning(f"Weird paper name '{paper_name}'")
-    #                 paper_name += f".pdf"
-    #             download_pdf(paper_url, os.path.join(dataset_papers_dir, paper_name))
-    #
-    #         result['metric'] = result['metric'].str.lower()
-    #         result['Model / System'] = result['Model / System'].str.lower()
-    #         result = (
-    #             preprocessed_data.groupby("PaperName")
-    #             .apply(lambda g: g[["Dataset", "Model / System", "metric", "value"]]
-    #                    .rename(columns={
-    #                 "Model / System": "Model",
-    #                 "metric": "Metric",
-    #                 "value": "Result"
-    #             })
-    #                    .to_dict(orient="records"))
-    #             .to_dict()
-    #         )
-    #         result = create_result_dict_in_correct_format(result)
-    #         result = add_hardcoded_task_to_result_dict(result)
-    #         save_dict_to_json(result, os.path.join(dataset_papers_dir, "result.json"))
-    #
-    #     else:
-    #         logger.warning(f"Skipping dataset '{dataset}' due to lack of data")
-    #
-    # driver.quit()
