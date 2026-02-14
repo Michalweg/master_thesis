@@ -18,6 +18,160 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMo
 from src.logger import logger
 
 
+def extract_primary_numeric_value(value: str) -> str:
+    """
+    Extract the primary numeric value from a complex result string.
+
+    Handles patterns like:
+    - "77.5 ± 1.2" -> "77.5"
+    - "75-80" or "75 - 80" -> "75" (takes first value)
+    - "77%" -> "77"
+    - "7.7e-1" -> "0.77" (scientific notation)
+    - "77/78/79" -> "77" (takes first value)
+    - "~77" or "≈77" -> "77"
+    - "<77" or ">77" or "<=77" or ">=77" -> "77"
+
+    Args:
+        value: A string that may contain a complex numeric representation
+
+    Returns:
+        A string with just the primary numeric value, or the original if no pattern matches
+    """
+    if not isinstance(value, str):
+        return str(value)
+
+    # Strip whitespace
+    value = value.strip()
+
+    # If it's already a simple number, return as-is
+    try:
+        float(value)
+        return value
+    except ValueError:
+        pass
+
+    # Remove percentage symbol
+    if value.endswith('%'):
+        value = value[:-1].strip()
+        try:
+            float(value)
+            return value
+        except ValueError:
+            pass
+
+    # Handle ± pattern: "77.5 ± 1.2" or "77.5±1.2" or "77.5 +/- 1.2"
+    plus_minus_pattern = re.match(r'^([-+]?\d*\.?\d+)\s*(?:±|\+/-|\+-)\s*\d*\.?\d+', value)
+    if plus_minus_pattern:
+        return plus_minus_pattern.group(1)
+
+    # Handle range pattern: "75-80" or "75 - 80" (but not negative numbers like "-5")
+    range_pattern = re.match(r'^(\d+\.?\d*)\s*[-–—]\s*\d+\.?\d*$', value)
+    if range_pattern:
+        return range_pattern.group(1)
+
+    # Handle slash-separated values: "77/78/79"
+    slash_pattern = re.match(r'^([-+]?\d*\.?\d+)(?:/\d*\.?\d+)+$', value)
+    if slash_pattern:
+        return slash_pattern.group(1)
+
+    # Handle approximate symbols: "~77" or "≈77" or "approximately 77"
+    approx_pattern = re.match(r'^[~≈≃]\s*([-+]?\d*\.?\d+)', value)
+    if approx_pattern:
+        return approx_pattern.group(1)
+
+    # Handle comparison operators: "<77", ">77", "<=77", ">=77"
+    comparison_pattern = re.match(r'^[<>]=?\s*([-+]?\d*\.?\d+)', value)
+    if comparison_pattern:
+        return comparison_pattern.group(1)
+
+    # Handle parenthetical additions: "77 (best)" or "77 (baseline)"
+    paren_pattern = re.match(r'^([-+]?\d*\.?\d+)\s*\(.*\)$', value)
+    if paren_pattern:
+        return paren_pattern.group(1)
+
+    # Handle asterisk/dagger markers: "77*" or "77†"
+    marker_pattern = re.match(r'^([-+]?\d*\.?\d+)[*†‡§]+$', value)
+    if marker_pattern:
+        return marker_pattern.group(1)
+
+    # Try to extract any leading number
+    leading_number = re.match(r'^([-+]?\d*\.?\d+)', value)
+    if leading_number:
+        return leading_number.group(1)
+
+    # Return original if no pattern matched
+    return value
+
+
+def normalize_result_to_decimal_scale(value: str) -> str:
+    """
+    Normalize a result value to 0-1 decimal scale.
+
+    This function:
+    1. Extracts the primary numeric value from complex strings (e.g., "77.5 ± 1.2" -> "77.5")
+    2. Converts percentage values (e.g., "77", "33.72") to decimal form (e.g., "0.77", "0.3372")
+
+    Logic:
+    - First extracts primary numeric value from complex patterns
+    - If value > 1: assume it's a percentage and divide by 100
+    - If value <= 1: already in decimal form, keep as is
+
+    Args:
+        value: A string representation of a numeric result (e.g., "77", "0.77", "33.72", "77.5 ± 1.2")
+
+    Returns:
+        A string representation of the normalized value in 0-1 scale
+
+    Examples:
+        >>> normalize_result_to_decimal_scale("77")
+        "0.77"
+        >>> normalize_result_to_decimal_scale("0.77")
+        "0.77"
+        >>> normalize_result_to_decimal_scale("33.72")
+        "0.3372"
+        >>> normalize_result_to_decimal_scale("77.5 ± 1.2")
+        "0.775"
+        >>> normalize_result_to_decimal_scale("77%")
+        "0.77"
+    """
+    # First extract the primary numeric value from complex patterns
+    extracted_value = extract_primary_numeric_value(value)
+
+    try:
+        numeric_value = float(extracted_value)
+        if numeric_value > 1:
+            normalized = numeric_value / 100
+        else:
+            normalized = numeric_value
+        # Format to avoid unnecessary trailing zeros, but preserve precision
+        if normalized == int(normalized):
+            return str(int(normalized))
+        else:
+            # Remove trailing zeros while keeping precision
+            return f"{normalized:.10f}".rstrip('0').rstrip('.')
+    except (ValueError, TypeError):
+        logger.warning(f"Could not normalize result value: {value}")
+        return value
+
+
+def normalize_results_in_tdm_list(tdm_list: list[dict]) -> list[dict]:
+    """
+    Normalize all Result values in a list of TDM dictionaries to 0-1 scale.
+
+    Args:
+        tdm_list: List of dictionaries containing 'Result' key
+
+    Returns:
+        List of dictionaries with normalized 'Result' values
+    """
+    for tdm in tdm_list:
+        if "Result" in tdm and tdm["Result"]:
+            tdm["Result"] = normalize_result_to_decimal_scale(tdm["Result"])
+        if "ResultList" in tdm and tdm["ResultList"]:
+            tdm["ResultList"] = [normalize_result_to_decimal_scale(r) for r in tdm["ResultList"]]
+    return tdm_list
+
+
 def set_env():
     os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0"
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
