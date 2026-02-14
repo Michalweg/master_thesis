@@ -39,6 +39,7 @@ from src.tdmr_extraction_utils.utils import (
     create_one_result_file,
     create_one_result_file_for_evaluation_purpose,
 )
+from src.utils import normalize_results_in_tdm_list, read_json, save_dict_to_json
 
 # Step 3 (Alternative): TDMR Extraction with Author Approach imports
 from src.tdmr_extraction.tdmr_extraction_with_author_approach import (
@@ -891,6 +892,39 @@ def extract_tdmr_results_with_author_approach(
 
 
 # ============================================================================
+# RESULT NORMALIZATION
+# ============================================================================
+
+def normalize_pipeline_results(output_dir: Path) -> None:
+    """
+    Normalize all Result values in the pipeline output to 0-1 decimal scale.
+
+    This function reads the evaluation results file and normalizes all Result values
+    to ensure consistent comparison between ground truth and predictions.
+
+    Args:
+        output_dir: Directory containing the pipeline output files
+    """
+    eval_results_file = output_dir / "processed_tdmr_extraction_test_papers_evaluation_valid_results.json"
+
+    if not eval_results_file.exists():
+        logger.warning(f"Evaluation results file not found: {eval_results_file}")
+        return
+
+    logger.info("Normalizing pipeline results to 0-1 decimal scale...")
+    results = read_json(eval_results_file)
+
+    for paper_name in results.keys():
+        if "normalized_output" in results[paper_name]:
+            results[paper_name]["normalized_output"] = normalize_results_in_tdm_list(
+                results[paper_name]["normalized_output"]
+            )
+
+    save_dict_to_json(results, str(eval_results_file))
+    logger.info(f"Normalized results saved to: {eval_results_file}")
+
+
+# ============================================================================
 # MAIN PIPELINE WITH AUTHOR EXTENSION
 # ============================================================================
 
@@ -1114,6 +1148,9 @@ def run_complete_pipeline_with_authors_extension(
             create_one_result_file_for_evaluation_purpose(tdmr_output_dir)
             logger.info("Consolidated result files created successfully")
 
+        # Step 4: Normalize results to 0-1 decimal scale
+        normalize_pipeline_results(tdmr_output_dir)
+
         logger.info("=" * 80)
         logger.info("PIPELINE COMPLETED SUCCESSFULLY!")
         logger.info("=" * 80)
@@ -1129,16 +1166,16 @@ def run_complete_pipeline_with_authors_extension(
 
 if __name__ == "__main__":
     CONFIG = {
-        "pdf_files_dir": "custom_dataset_papers_refined/dbpedia/LC-QuAD v1",  # Primary input: directory with PDF files
+        "pdf_files_dir": "custom_dataset_papers_refined/dbpedia/QALD-2",  # Primary input: directory with PDF files
         "author_model_extraction_dir": "author_model_extraction",  # Required: directory with author model extraction results
-        "markdown_files_dir": "custom_dataset_papers_refined/dbpedia/LC-QuAD v1/markdowns",  # markdown_files_dir will be auto-generated if not specified
+        "markdown_files_dir": "",  # markdown_files_dir will be auto-generated if not specified
         # papers_dir defaults to pdf_files_dir if not specified
-        "true_dataset_path": "custom_dataset_papers_refined/dbpedia/LC-QuAD v1/LC-QuAD v1.json",
+        "true_dataset_path": "custom_dataset_papers_refined/dbpedia/QALD-2/QALD-2.json",
         "base_output_dir": "pipeline_results_with_author_approach",
         "model_name": "openai-gpt-oss-120b",
         "keys_to_normalize": {"Metric", "Dataset"},
         "chunk_size": 5000,
-        "resume_from_dir": "10_01_2026"  # Optional: resume from specific directory
+        "resume_from_dir": ""  # Optional: resume from specific directory
     }
 
     run_complete_pipeline_with_authors_extension(**CONFIG)

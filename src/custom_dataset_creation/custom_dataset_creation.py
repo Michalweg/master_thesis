@@ -15,7 +15,8 @@ from PyPDF2 import PdfReader
 from src.const import TASK_NAME
 from src.logger import logger
 from src.utils import (create_dir_if_not_exists, download_pdf,
-                       extract_tables_from_markdown, save_dict_to_json, read_json)
+                       extract_tables_from_markdown, save_dict_to_json, read_json,
+                       normalize_results_in_tdm_list)
 from pydantic import BaseModel, Field
 
 
@@ -160,8 +161,8 @@ def preprocess_table(table: pd.DataFrame) -> pd.DataFrame:
     reported_column = "Reported By" if "Reported By" in table.columns else "Reported by"
     table["PaperUrl"] = table[reported_column].str.extract(r"\((.*?)\)")
 
-    # Extract file name from url
-    table["PaperName"] = table["PaperUrl"].apply(lambda x: os.path.basename(x))
+    # Extract file name from url (strip trailing slashes to handle URLs like https://example.com/paper-id/)
+    table["PaperName"] = table["PaperUrl"].apply(lambda x: os.path.basename(x.rstrip('/')))
 
     return table
 
@@ -184,7 +185,7 @@ def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: st
         model_system_column_name = "Model / System" if "Model / System" in preprocessed_table.columns else "Model"
         for paper_url in preprocessed_table["PaperUrl"].unique():
             logger.info(f"Processing paper '{paper_url}'")
-            paper_name = Path(paper_url).name
+            paper_name = Path(paper_url.rstrip('/')).name
             if ".pdf" not in paper_name:
                 logger.warning(f"Weird paper name '{paper_name}'")
                 paper_name += f".pdf"
@@ -255,6 +256,22 @@ def add_hardcoded_task_to_result_dict(result: dict, hardcoded_task_name: str = T
     return result
 
 
+def normalize_results_in_result_dict(result: dict) -> dict:
+    """
+    Normalize all Result values in the result dict to 0-1 decimal scale.
+
+    Args:
+        result: Dictionary with structure {paper_name: {"TDMs": [...]}}
+
+    Returns:
+        Dictionary with normalized Result values
+    """
+    for paper_name in result.keys():
+        if "TDMs" in result[paper_name]:
+            result[paper_name]["TDMs"] = normalize_results_in_tdm_list(result[paper_name]["TDMs"])
+    return result
+
+
 if __name__ == "__main__":
     columns_to_drop = ["Year", "Language", "Reported by", "id"]
     known_metrics = ["F1", "Precision", "Recall", "Hits@1", "Hits@10", "Precision@1", "MRR", "Hits@5", "Accuracy"]
@@ -262,13 +279,14 @@ if __name__ == "__main__":
     create_dir_if_not_exists(Path(custom_dataset_papers_dir))
     analyzed_knowledge_graph = "dbpedia"
 
-    datasets_for_markdown = ["QALD-1"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
+    datasets_for_markdown = ["QALD-2"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
     for dataset in datasets_for_markdown:
         markdown_file = os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph, dataset, dataset + ".md")
-        download_github_file("https://github.com/KGQA/leaderboard/blob/v2.0/dbpedia/QALD-1.md", markdown_file)
+        download_github_file("https://github.com/KGQA/leaderboard/blob/v2.0/dbpedia/QALD-2.md", markdown_file)
         preprocessed_dict, failed_downloads = preprocess_md_file_from_repository(markdown_file, dataset_name=dataset, columns_to_drop=columns_to_drop, known_metrics=known_metrics, papers_dir=os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph))
         result = create_result_dict_in_correct_format(preprocessed_dict)
         result = add_hardcoded_task_to_result_dict(result)
+        result = normalize_results_in_result_dict(result)
         save_dict_to_json(result, Path(markdown_file).with_suffix(".json"))
 
         # Save failed downloads if there are any
