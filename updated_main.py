@@ -56,12 +56,14 @@ from prompts.tdmr_extracton_with_model_name import (
 from src.tdmr_extraction_utils.author_model_extraction import (
     extract_author_model_prediction,
     combine_all_sections_based_json_into_one_file,
+    extract_all_model_names_from_tables,
 )
 from src.parsers.docling_parsers import convert_pdf_into_md_using_docling
 from src.tdmr_extraction_utils.utils import chunk_markdown_file
 from prompts.author_model_extraction import (
     EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_SYSTEM_PROMPT,
     EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT,
+    EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT_WITH_TABLE_CONTEXT,
 )
 
 # Common utilities
@@ -775,6 +777,15 @@ def extract_tdmr_results_with_author_approach(
                 logger.info(f"Converting PDF to markdown for {paper_name}...")
                 md_file_path = convert_pdf_into_md_using_docling(paper_pdf_path)
 
+                # Extract model names from tables in the markdown
+                table_model_names = extract_all_model_names_from_tables(md_file_path, model_name)
+
+                # Choose the appropriate user prompt based on whether table names were found
+                if table_model_names:
+                    active_user_prompt = EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT_WITH_TABLE_CONTEXT
+                else:
+                    active_user_prompt = EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT
+
                 # Chunk the markdown file
                 logger.info(f"Chunking markdown file for {paper_name}...")
                 papers_section_text = chunk_markdown_file(md_file_path, 4000)
@@ -797,7 +808,8 @@ def extract_tdmr_results_with_author_approach(
                             output_dir=str(author_model_paper_output_dir),
                             model_name=model_name,
                             system_prompt=EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_SYSTEM_PROMPT,
-                            user_prompt=EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT,
+                            user_prompt=active_user_prompt,
+                            table_model_names=table_model_names if table_model_names else None,
                         )
 
                         # Remove temporary markdown file from current working directory
@@ -1166,11 +1178,11 @@ def run_complete_pipeline_with_authors_extension(
 
 if __name__ == "__main__":
     CONFIG = {
-        "pdf_files_dir": "custom_dataset_papers_refined/dbpedia/QALD-2",  # Primary input: directory with PDF files
+        "pdf_files_dir": "custom_dataset_papers_refined/dbpedia/QALD-1",  # Primary input: directory with PDF files
         "author_model_extraction_dir": "author_model_extraction",  # Required: directory with author model extraction results
         "markdown_files_dir": "",  # markdown_files_dir will be auto-generated if not specified
         # papers_dir defaults to pdf_files_dir if not specified
-        "true_dataset_path": "custom_dataset_papers_refined/dbpedia/QALD-2/QALD-2.json",
+        "true_dataset_path": "custom_dataset_papers_refined/dbpedia/QALD-1/QALD-1.json",
         "base_output_dir": "pipeline_results_with_author_approach",
         "model_name": "openai-gpt-oss-120b",
         "keys_to_normalize": {"Metric", "Dataset"},
