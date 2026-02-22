@@ -505,7 +505,7 @@ def extract_tables_and_captions_from_pdf(pdf_path: str, output_dir: str = "") ->
     # Iterate over extracted tables
     for table_ix, table in enumerate(result.document.tables):
         table_caption_str = ""
-        table_df: pd.DataFrame = table.export_to_dataframe()
+        table_df: pd.DataFrame = table.export_to_dataframe(doc=result.document)
 
         # Extract table caption text(s)
         for table_caption in table.captions:
