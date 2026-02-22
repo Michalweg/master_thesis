@@ -1,26 +1,36 @@
 import os
 from pathlib import Path
 
+import pandas as pd
 from langchain.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 from tqdm import tqdm
 
 from src.logger import logger
+from src.ollama_client import get_ollama_model_response
 from src.openai_client import get_llm_model_response, get_openai_model_response
 from src.parsers.llm_parser import (parse_model_response,
                                     send_request_to_the_model_with_ollama)
 from src.parsers.docling_parsers import convert_pdf_into_md_using_docling
 from src.parsers.marker_parser import parse_pdf_with_marker
 from src.parsers.parser import extract_pdf_sections_content
-from src.utils import (create_dir_if_not_exists, read_json,
+from src.utils import (create_dir_if_not_exists, extract_tables_from_markdown,
+                       read_json,
                        read_markdown_file_content, save_dict_to_json,
                        save_str_as_markdown, save_str_as_txt_file)
-from prompts.author_model_extraction import EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_SYSTEM_PROMPT, EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT
+from prompts.author_model_extraction import (
+    EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_SYSTEM_PROMPT,
+    EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT,
+    EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT_WITH_TABLE_CONTEXT,
+    EXTRACT_MODEL_NAMES_FROM_TABLE_SYSTEM_PROMPT,
+    EXTRACT_MODEL_NAMES_FROM_TABLE_USER_PROMPT,
+)
 from typing import Dict, List, Union
 from collections import Counter
 from src.tdmr_extraction_utils.utils import chunk_markdown_file
 
 MODEL_NAME = "openai-gpt-oss-120b"
+OLLAMA_MODEL_NAME = "gpt-oss:20b"
 
 
 class AuthorsModelResponse(BaseModel):
@@ -29,7 +39,117 @@ class AuthorsModelResponse(BaseModel):
     )
 
 
+class TableModelNamesResponse(BaseModel):
+    model_approach_names: list[str] = Field(
+        description="List of all model/approach names found in the table."
+    )
 
+
+
+def extract_model_names_from_table(
+    table_df: pd.DataFrame,
+    system_prompt: str,
+    user_prompt: str,
+    model_name: str,
+    use_ollama: bool = True,
+    caption: str = "",
+) -> list[str]:
+    try:
+        table_md = table_df.to_markdown()
+        caption_text = f"Table caption: {caption}\n" if caption else ""
+        prompt = PromptTemplate(template=user_prompt).format(
+            table=table_md, caption=caption_text
+        )
+
+        if use_ollama:
+            response = get_ollama_model_response(
+                prompt,
+                model_name=model_name,
+                system_prompt=system_prompt,
+                pydantic_object_structured_output=TableModelNamesResponse,
+            )
+        else:
+            response = get_llm_model_response(
+                prompt,
+                model_name=model_name,
+                system_prompt=system_prompt,
+                pydantic_object_structured_output=TableModelNamesResponse,
+            )
+
+        if isinstance(response, TableModelNamesResponse):
+            return response.model_approach_names
+        elif isinstance(response, dict) and "model_approach_names" in response:
+            return response["model_approach_names"]
+        return []
+    except Exception as e:
+        logger.error(f"Error extracting model names from table: {e}")
+        return []
+
+
+def _load_tables_from_dir(tables_dir: str | Path) -> list[tuple[pd.DataFrame, str]]:
+    tables_path = Path(tables_dir)
+
+    # Load captions from result_dict.json if available
+    captions: dict[int, str] = {}
+    result_dict_path = tables_path / "result_dict.json"
+    if result_dict_path.exists():
+        result_dict = read_json(result_dict_path)
+        for idx, entry in enumerate(result_dict):
+            if isinstance(entry, dict):
+                captions[idx] = entry.get("caption", "")
+
+    csv_files = sorted(tables_path.glob("*.csv"), key=lambda f: int(f.stem))
+    tables = []
+    for csv_file in csv_files:
+        try:
+            table_idx = int(csv_file.stem)
+            caption = captions.get(table_idx, "")
+            tables.append((pd.read_csv(csv_file), caption))
+        except Exception as e:
+            logger.warning(f"Failed to read {csv_file}: {e}")
+    return tables
+
+
+def extract_all_model_names_from_tables(
+    model_name: str,
+    use_ollama: bool = True,
+    tables_dir: str | Path | None = None,
+    md_file_path: str | Path | None = None,
+) -> list[str]:
+    effective_model = OLLAMA_MODEL_NAME if use_ollama else model_name
+
+    if tables_dir:
+        logger.info(
+            f"Extracting model names from pre-extracted tables in {tables_dir} "
+            f"using {'Ollama' if use_ollama else 'API'} model: {effective_model}..."
+        )
+        tables_with_captions = _load_tables_from_dir(tables_dir)
+    elif md_file_path:
+        logger.info(
+            f"Extracting model names from markdown tables in {md_file_path} "
+            f"using {'Ollama' if use_ollama else 'API'} model: {effective_model}..."
+        )
+        tables_with_captions = [
+            (df, "") for df in extract_tables_from_markdown(str(md_file_path))
+        ]
+    else:
+        logger.warning("No tables_dir or md_file_path provided, skipping table model extraction")
+        return []
+
+    all_model_names: list[str] = []
+    for table_df, caption in tables_with_captions:
+        names = extract_model_names_from_table(
+            table_df,
+            system_prompt=EXTRACT_MODEL_NAMES_FROM_TABLE_SYSTEM_PROMPT,
+            user_prompt=EXTRACT_MODEL_NAMES_FROM_TABLE_USER_PROMPT,
+            model_name=effective_model,
+            use_ollama=use_ollama,
+            caption=caption,
+        )
+        all_model_names.extend(names)
+    deduplicated = sorted(set(all_model_names))
+    logger.info(f"Found {len(deduplicated)} unique model names from tables: {deduplicated}")
+    return deduplicated
 
 
 def extract_author_model_prediction(
@@ -39,11 +159,18 @@ def extract_author_model_prediction(
     user_prompt: str,
     url: str = "http://localhost:11434/api/generate",
     model_name: str = "mistral",
+    table_model_names: list[str] | None = None,
 ):
     logger.info(f"Extracting author model using {model_name} ...")
     file_content = read_markdown_file_content(markdown_file_path)
     if file_content:
-        prompt = PromptTemplate(template=user_prompt).format(section=file_content)
+        if table_model_names:
+            prompt = PromptTemplate(template=user_prompt).format(
+                section=file_content,
+                table_model_names=", ".join(table_model_names),
+            )
+        else:
+            prompt = PromptTemplate(template=user_prompt).format(section=file_content)
 
         try:
             model_response = get_llm_model_response(prompt, model_name=model_name, system_prompt=system_prompt, pydantic_object_structured_output=AuthorsModelResponse)
@@ -134,6 +261,7 @@ if __name__ == "__main__":
             "extracted_text_dict.json",
         )
 
+        full_md_file_path = None
         if not Path(papers_section_text_path).exists():
             if user_marker:
             # Create this file by parsing the file with Marker and then extract section out of it.
@@ -141,12 +269,26 @@ if __name__ == "__main__":
                 markdown_file_path = parse_pdf_with_marker(
                     str(paper_path), marker_output_dir
                 )
+                full_md_file_path = markdown_file_path
                 papers_section_text = extract_pdf_sections_content(markdown_file_path)
             else:
                 md_file_path = convert_pdf_into_md_using_docling(paper_path)
+                full_md_file_path = md_file_path
                 papers_section_text = chunk_markdown_file(md_file_path, 4000)
         else:
             papers_section_text = read_json(Path(papers_section_text_path))
+
+        # Extract model names from tables
+        # Set use_ollama=False to fall back to the API-based model
+        table_model_names = extract_all_model_names_from_tables(
+            MODEL_NAME, use_ollama=True, md_file_path=full_md_file_path
+        )
+
+        # Choose the appropriate user prompt based on whether table names were found
+        if table_model_names:
+            active_user_prompt = EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT_WITH_TABLE_CONTEXT
+        else:
+            active_user_prompt = EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT
 
         # Iterating through each section
         for section in papers_section_text:
@@ -157,7 +299,8 @@ if __name__ == "__main__":
                     output_dir=paper_name_output_path,
                     model_name=MODEL_NAME,
                     system_prompt=EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_SYSTEM_PROMPT,
-                    user_prompt=EXTRACT_AUTHOR_APPROACH_FORM_SECTIONS_USER_PROMPT
+                    user_prompt=active_user_prompt,
+                    table_model_names=table_model_names if table_model_names else None,
                 )
                 os.remove(f"{section}.md")
             else:

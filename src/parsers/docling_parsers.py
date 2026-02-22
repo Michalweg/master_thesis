@@ -124,7 +124,7 @@ if __name__ == "__main__":
 
             for table_ix, table in enumerate(result.document.tables):
                 table_caption_str = ''
-                table_df: pd.DataFrame = table.export_to_dataframe()
+                table_df: pd.DataFrame = table.export_to_dataframe(doc=result.document)
 
                 for table_caption in table.captions:
                     extracted_table_caption = find_extracted_texts_given_cref(extracted_texts, table_caption.cref)
