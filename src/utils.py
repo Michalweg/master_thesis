@@ -283,14 +283,22 @@ def extract_tables_from_markdown(md_file_path: str) -> list[pd.DataFrame]:
         ]  # Skip the separator line (index 1)
 
         # Process each cell to remove commas between digits
+        n_cols = len(header)
         for i, row in enumerate(rows):
-            rows[i] = [re.sub(r"(?<=\d),(?=\d)", "", cell.strip()) for cell in row]
+            cleaned = [re.sub(r"(?<=\d),(?=\d)", "", cell.strip()) for cell in row]
+            # Truncate or pad rows that don't match header length
+            if len(cleaned) > n_cols:
+                logger.warning(f"Row {i} has {len(cleaned)} cells but header has {n_cols}; truncating extra cells")
+                cleaned = cleaned[:n_cols]
+            elif len(cleaned) < n_cols:
+                cleaned += [""] * (n_cols - len(cleaned))
+            rows[i] = cleaned
         try:
             df = pd.DataFrame(rows, columns=header)
             df.columns = [col.strip() for col in df.columns]
             dataframes.append(df)
-        except:
-            logger.error("")
+        except Exception as e:
+            logger.error(f"Failed to build DataFrame from table: {e}")
 
     return dataframes
 
@@ -365,18 +373,19 @@ def get_unique_values_with_the_same_order(data: list) -> list:
     return unique
 
 
-def download_pdf(url, filename):
+def download_pdf(url, filename, timeout: int = 30):
     """
     Download a PDF from a given URL and save it with the specified filename.
 
     Args:
         url (str): The URL of the PDF to download.
         filename (str): The local filename to save the PDF as.
+        timeout (int): Seconds to wait before giving up on the request.
 
     Raises:
         requests.exceptions.RequestException: If the download fails
     """
-    response = requests.get(url)
+    response = requests.get(url, timeout=timeout)
     response.raise_for_status()  # Raise an error for bad status codes
     with open(filename, "wb") as f:
         f.write(response.content)

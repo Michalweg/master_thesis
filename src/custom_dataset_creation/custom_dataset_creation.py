@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 from pathlib import Path
 from typing import Union
@@ -161,6 +162,12 @@ def preprocess_table(table: pd.DataFrame) -> pd.DataFrame:
     reported_column = "Reported By" if "Reported By" in table.columns else "Reported by"
     table["PaperUrl"] = table[reported_column].str.extract(r"\((.*?)\)")
 
+    # Drop rows where no URL could be extracted
+    missing = table["PaperUrl"].isna().sum()
+    if missing:
+        logger.warning(f"Dropping {missing} row(s) with no URL in '{reported_column}'")
+    table = table.dropna(subset=["PaperUrl"]).reset_index(drop=True)
+
     # Extract file name from url (strip trailing slashes to handle URLs like https://example.com/paper-id/)
     table["PaperName"] = table["PaperUrl"].apply(lambda x: os.path.basename(x.rstrip('/')))
 
@@ -279,10 +286,10 @@ if __name__ == "__main__":
     create_dir_if_not_exists(Path(custom_dataset_papers_dir))
     analyzed_knowledge_graph = "dbpedia"
 
-    datasets_for_markdown = ["QALD-2"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
+    datasets_for_markdown = ["QALD-9-Plus-DBpedia"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
     for dataset in datasets_for_markdown:
         markdown_file = os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph, dataset, dataset + ".md")
-        download_github_file("https://github.com/KGQA/leaderboard/blob/v2.0/dbpedia/QALD-2.md", markdown_file)
+        download_github_file("https://github.com/KGQA/leaderboard/blob/v2.0/dbpedia/QALD-9-Plus-DBpedia.md", markdown_file)
         preprocessed_dict, failed_downloads = preprocess_md_file_from_repository(markdown_file, dataset_name=dataset, columns_to_drop=columns_to_drop, known_metrics=known_metrics, papers_dir=os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph))
         result = create_result_dict_in_correct_format(preprocessed_dict)
         result = add_hardcoded_task_to_result_dict(result)
@@ -294,3 +301,38 @@ if __name__ == "__main__":
             failed_downloads_file = os.path.join(os.path.dirname(markdown_file), "failed_downloads.json")
             save_dict_to_json(failed_downloads, failed_downloads_file)
             logger.info(f"Saved {len(failed_downloads)} failed downloads to {failed_downloads_file}")
+
+    # Collect all unique PDFs from dbpedia subdirectories into a single flat directory
+    all_papers_dir = Path(custom_dataset_papers_dir) / analyzed_knowledge_graph / f"all_papers_{analyzed_knowledge_graph}"
+    create_dir_if_not_exists(all_papers_dir)
+    dbpedia_dir = Path(custom_dataset_papers_dir) / analyzed_knowledge_graph
+    copied, skipped = 0, 0
+    for pdf_path in dbpedia_dir.rglob("*.pdf"):
+        dest = all_papers_dir / pdf_path.name
+        if not dest.exists():
+            shutil.copy2(pdf_path, dest)
+            copied += 1
+        else:
+            skipped += 1
+    logger.info(f"Collected PDFs into '{all_papers_dir}': {copied} copied, {skipped} skipped (duplicates).")
+
+    # Combine all per-dataset JSON files into one merged JSON in all_papers_dbpedia
+    combined: dict = {}
+    for subdir in sorted(dbpedia_dir.iterdir()):
+        if not subdir.is_dir():
+            continue
+        dataset_json = subdir / f"{subdir.name}.json"
+        if not dataset_json.exists():
+            logger.warning(f"No dataset JSON found at {dataset_json}, skipping.")
+            continue
+        data = read_json(str(dataset_json))
+        for paper_key, paper_value in data.items():
+            if paper_key not in combined:
+                combined[paper_key] = {"PaperURL": paper_value["PaperURL"], "TDMs": []}
+            combined[paper_key]["TDMs"].extend(paper_value["TDMs"])
+        logger.info(f"Merged {dataset_json.name} ({len(data)} papers)")
+
+    combined = normalize_results_in_result_dict(combined)
+    combined_output_path = all_papers_dir / "all_dbpedia.json"
+    save_dict_to_json(combined, str(combined_output_path))
+    logger.info(f"Combined JSON saved to '{combined_output_path}' ({len(combined)} unique papers).")
