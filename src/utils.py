@@ -249,6 +249,12 @@ def read_markdown_file_content(markdown_file_path: Path | str) -> str:
 def extract_tables_from_markdown(md_file_path: str) -> list[pd.DataFrame]:
     lines = read_markdown_file_into_lines(md_file_path)
 
+    # Strip YAML front matter (--- ... --- block at the start of the file)
+    if lines and lines[0].strip() == "---":
+        end = next((i for i, l in enumerate(lines[1:], 1) if l.strip() == "---"), None)
+        if end is not None:
+            lines = lines[end + 1:]
+
     tables = []
     table_lines = []
     inside_table = False
