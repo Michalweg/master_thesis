@@ -1,4 +1,6 @@
+import io
 import os
+import shutil
 import time
 from pathlib import Path
 from typing import Union
@@ -161,6 +163,12 @@ def preprocess_table(table: pd.DataFrame) -> pd.DataFrame:
     reported_column = "Reported By" if "Reported By" in table.columns else "Reported by"
     table["PaperUrl"] = table[reported_column].str.extract(r"\((.*?)\)")
 
+    # Drop rows where no URL could be extracted
+    missing = table["PaperUrl"].isna().sum()
+    if missing:
+        logger.warning(f"Dropping {missing} row(s) with no URL in '{reported_column}'")
+    table = table.dropna(subset=["PaperUrl"]).reset_index(drop=True)
+
     # Extract file name from url (strip trailing slashes to handle URLs like https://example.com/paper-id/)
     table["PaperName"] = table["PaperUrl"].apply(lambda x: os.path.basename(x.rstrip('/')))
 
@@ -171,7 +179,15 @@ def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: st
                                        known_metrics:list[str], papers_dir: str) -> tuple[dict, list[dict]]:
     tables = extract_tables_from_markdown(markdown_file_path)
     if not tables:
-        table = pd.read_csv(markdown_file_path, sep="|")
+        with open(markdown_file_path, "r") as f:
+            raw_lines = f.readlines()
+        # Strip YAML front matter
+        if raw_lines and raw_lines[0].strip() == "---":
+            end = next((i for i, l in enumerate(raw_lines[1:], 1) if l.strip() == "---"), None)
+            if end is not None:
+                raw_lines = raw_lines[end + 1:]
+        table_content = "".join(l for l in raw_lines if l.strip().startswith("|"))
+        table = pd.read_csv(io.StringIO(table_content), sep="|")
         columns_to_drop = [col for col in table if "unnamed" in col.lower()]
         table.drop(columns=columns_to_drop, inplace=True)
         table.columns = [col.strip() for col in table.columns]
@@ -182,6 +198,8 @@ def preprocess_md_file_from_repository(markdown_file_path: str, dataset_name: st
     for table in tables:
         table = preprocess_table(table)
         preprocessed_table = preprocess_data(table, dataset_name=dataset_name, columns_to_drop=columns_to_drop, metric_names=known_metrics)
+        if preprocessed_table.empty:
+            raise Exception("The table was not extracted, it's empty")
         model_system_column_name = "Model / System" if "Model / System" in preprocessed_table.columns else "Model"
         for paper_url in preprocessed_table["PaperUrl"].unique():
             logger.info(f"Processing paper '{paper_url}'")
@@ -272,17 +290,105 @@ def normalize_results_in_result_dict(result: dict) -> dict:
     return result
 
 
+def mark_authors_approach(result: dict, model_name: str, paper_name: str) -> dict:
+    """
+    Add "authors_approach": "yes" to all TDMs matching a given model within a specific paper.
+
+    Args:
+        result: Dictionary with structure {paper_name: {"TDMs": [...]}}
+        model_name: The model name to match (e.g. "WDAqua-core1")
+        paper_name: The paper key to target (e.g. "swj2038.pdf")
+
+    Returns:
+        Updated result dictionary
+    """
+    if paper_name not in result:
+        logger.warning(f"Paper '{paper_name}' not found in result dict.")
+        return result
+    for tdm in result[paper_name].get("TDMs", []):
+        if tdm.get("Model") == model_name and "authors_approach" not in tdm:
+            tdm["authors_approach"] = "yes"
+    return result
+
+
+def combine_refined_authors_approach_files(base_dir: str, output_path: str) -> dict:
+    """
+    Combine all files containing 'refined_authors_approach' in their name across all
+    subdirectories of base_dir, keeping only TDMs that have "authors_approach": "yes".
+
+    Args:
+        base_dir: Root directory to search (e.g. "custom_dataset_papers_refined/dbpedia")
+        output_path: Path where the combined JSON will be saved
+
+    Returns:
+        Combined dictionary with structure {paper_name: {"PaperURL": ..., "TDMs": [...]}}
+    """
+    combined: dict = {}
+    for fpath in sorted(Path(base_dir).rglob("*.json")):
+        if "refined_authors_approach" not in fpath.name:
+            continue
+        data = read_json(str(fpath))
+        for paper, content in data.items():
+            filtered = [tdm for tdm in content.get("TDMs", []) if tdm.get("authors_approach") == "yes"]
+            if filtered:
+                if paper not in combined:
+                    combined[paper] = {"PaperURL": content.get("PaperURL", ""), "TDMs": []}
+                combined[paper]["TDMs"].extend(filtered)
+        logger.info(f"Processed {fpath.name}")
+
+    save_dict_to_json(combined, output_path)
+    logger.info(f"Combined authors-approach file saved to '{output_path}' ({len(combined)} papers).")
+    return combined
+
+
+def combine_all_authors_approach_files(base_dir: str, output_path: str, exclude_dirs: list[str] = None) -> dict:
+    """
+    Iterate over all immediate subdirectories of base_dir (excluding specified dirs),
+    find files matching '*refined_authors_approach*.json' in each, and combine all TDMs
+    into a single output file.
+
+    Args:
+        base_dir: Root directory to search (e.g. "custom_dataset_papers_refined/dbpedia")
+        output_path: Path where the combined JSON will be saved
+        exclude_dirs: List of subdirectory names to skip (default: ["all_papers_dbpedia"])
+
+    Returns:
+        Combined dictionary with structure {paper_name: {"PaperURL": ..., "TDMs": [...]}}
+    """
+    if exclude_dirs is None:
+        exclude_dirs = ["all_papers_dbpedia"]
+
+    combined: dict = {}
+    for subdir in sorted(Path(base_dir).iterdir()):
+        if not subdir.is_dir() or subdir.name in exclude_dirs:
+            continue
+        matches = list(subdir.glob("*refined_authors_approach*.json"))
+        if not matches:
+            logger.info(f"Skipping '{subdir.name}' (no matching file)")
+            continue
+        data = read_json(str(matches[0]))
+        for paper, content in data.items():
+            if paper not in combined:
+                combined[paper] = {"PaperURL": content.get("PaperURL", ""), "TDMs": []}
+            combined[paper]["TDMs"].extend(normalize_results_in_tdm_list(content.get("TDMs", [])))
+        logger.info(f"Merged {matches[0].name} ({len(data)} papers)")
+
+    save_dict_to_json(combined, output_path)
+    logger.info(f"Saved combined file to '{output_path}' ({len(combined)} papers).")
+    return combined
+
+
 if __name__ == "__main__":
     columns_to_drop = ["Year", "Language", "Reported by", "id"]
     known_metrics = ["F1", "Precision", "Recall", "Hits@1", "Hits@10", "Precision@1", "MRR", "Hits@5", "Accuracy"]
     custom_dataset_papers_dir = "custom_dataset_papers_refined"
     create_dir_if_not_exists(Path(custom_dataset_papers_dir))
-    analyzed_knowledge_graph = "dbpedia"
+    analyzed_knowledge_graph = "wikidata"
 
-    datasets_for_markdown = ["QALD-2"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
+    datasets_for_markdown = ["TimeQuestions - Temporal Answer"] # custom_dataset_papers/dbpedia/LC-QuAD v1/LC-QuAD v1.md
     for dataset in datasets_for_markdown:
         markdown_file = os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph, dataset, dataset + ".md")
-        download_github_file("https://github.com/KGQA/leaderboard/blob/v2.0/dbpedia/QALD-2.md", markdown_file)
+        download_github_file(f"https://github.com/KGQA/leaderboard/blob/v2.0/wikidata/{dataset}.md", markdown_file)
         preprocessed_dict, failed_downloads = preprocess_md_file_from_repository(markdown_file, dataset_name=dataset, columns_to_drop=columns_to_drop, known_metrics=known_metrics, papers_dir=os.path.join(custom_dataset_papers_dir, analyzed_knowledge_graph))
         result = create_result_dict_in_correct_format(preprocessed_dict)
         result = add_hardcoded_task_to_result_dict(result)
@@ -294,3 +400,38 @@ if __name__ == "__main__":
             failed_downloads_file = os.path.join(os.path.dirname(markdown_file), "failed_downloads.json")
             save_dict_to_json(failed_downloads, failed_downloads_file)
             logger.info(f"Saved {len(failed_downloads)} failed downloads to {failed_downloads_file}")
+
+    # Collect all unique PDFs from dbpedia subdirectories into a single flat directory
+    all_papers_dir = Path(custom_dataset_papers_dir) / analyzed_knowledge_graph / f"all_papers_{analyzed_knowledge_graph}"
+    create_dir_if_not_exists(all_papers_dir)
+    dbpedia_dir = Path(custom_dataset_papers_dir) / analyzed_knowledge_graph
+    copied, skipped = 0, 0
+    for pdf_path in dbpedia_dir.rglob("*.pdf"):
+        dest = all_papers_dir / pdf_path.name
+        if not dest.exists():
+            shutil.copy2(pdf_path, dest)
+            copied += 1
+        else:
+            skipped += 1
+    logger.info(f"Collected PDFs into '{all_papers_dir}': {copied} copied, {skipped} skipped (duplicates).")
+
+    # Combine all per-dataset JSON files into one merged JSON in all_papers_dbpedia
+    combined: dict = {}
+    for subdir in sorted(dbpedia_dir.iterdir()):
+        if not subdir.is_dir():
+            continue
+        dataset_json = subdir / f"{subdir.name}.json"
+        if not dataset_json.exists():
+            logger.warning(f"No dataset JSON found at {dataset_json}, skipping.")
+            continue
+        data = read_json(str(dataset_json))
+        for paper_key, paper_value in data.items():
+            if paper_key not in combined:
+                combined[paper_key] = {"PaperURL": paper_value["PaperURL"], "TDMs": []}
+            combined[paper_key]["TDMs"].extend(paper_value["TDMs"])
+        logger.info(f"Merged {dataset_json.name} ({len(data)} papers)")
+
+    combined = normalize_results_in_result_dict(combined)
+    combined_output_path = all_papers_dir / "all_dbpedia.json"
+    save_dict_to_json(combined, str(combined_output_path))
+    logger.info(f"Combined JSON saved to '{combined_output_path}' ({len(combined)} unique papers).")

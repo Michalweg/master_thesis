@@ -542,15 +542,15 @@ def run_complete_pipeline_with_authors_extension(
 
 if __name__ == "__main__":
     CONFIG = {
-        "pdf_files_dir": "custom_dataset_papers_refined/dbpedia/LC-QuAD v1",
+        "pdf_files_dir": "custom_dataset_papers_refined/wikidata/all_papers_wikidata",
         "author_model_extraction_dir": "author_model_extraction",
         "markdown_files_dir": "",
-        "true_dataset_path": "custom_dataset_papers_refined/dbpedia/LC-QuAD v1/LC-QuAD v1-refined.json",
+        "true_dataset_path": "custom_dataset_papers_refined/wikidata/all_papers_wikidata/all_dbpedia.json",
         "base_output_dir": "pipeline_results_with_author_approach",
         "model_name": "openai-gpt-oss-120b",
         "keys_to_normalize": {"Metric", "Dataset"},
         "chunk_size": 5000,
-        "resume_from_dir": "21_02_2026_dbpedia_LC-QUAD1",
+        "resume_from_dir": "15_03_2026_all_wikidata",
     }
 
     run_complete_pipeline_with_authors_extension(**CONFIG)
