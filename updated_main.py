@@ -530,7 +530,7 @@ def run_complete_pipeline(
 
                 try:
                     logger.info(f"Converting {pdf_file.name} to markdown...")
-                    temp_md_path = convert_pdf_into_md_using_docling(str(pdf_file))
+                    temp_md_path = convert_pdf_into_md_using_docling(pdf_file)
 
                     # Move to output directory
                     import shutil
@@ -669,12 +669,12 @@ def run_complete_pipeline(
 
 if __name__ == "__main__":
     CONFIG = {
-        "pdf_files_dir": "custom_dataset_papers_refined/dbpedia/QALD-1",
-        "markdown_files_dir": "",
-        "true_dataset_path": "custom_dataset_papers_refined/dbpedia/QALD-1/QALD-1.json",
+        "pdf_files_dir": "leaderboard-generation-papers",
+        "markdown_files_dir": "leaderboard-generation-papers/markdowns",
+        "true_dataset_path": "leaderboard-generation/tdm_annotations.json",
         "base_output_dir": "pipeline_results",
-        "model_name": "openai-gpt-oss-120b",
-        "keys_to_normalize": {"Metric", "Dataset"},
+        "model_name": "deepseek-r1-distill-llama-70b",
+        "keys_to_normalize": {"Metric", "Dataset", "Task"},
         "chunk_size": 5000,
         "resume_from_dir": "",
     }

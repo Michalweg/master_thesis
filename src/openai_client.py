@@ -61,12 +61,23 @@ class ExtractedTriplets(BaseModel):
 def setup_academic_client():
     api_key = os.getenv("ACADEMIC_API_KEY") # Replace with your API key
     base_url = "https://chat-ai.academiccloud.de/v1"
-    return OpenAI(api_key=api_key, base_url=base_url)
+    return OpenAI(api_key=api_key, base_url=base_url, timeout=180.0)
+
+
+THINKING_MODELS = {"deepseek-r1-distill-llama-70b", "deepseek-r1"}
+
+
+def _strip_thinking_tokens(text: str) -> str:
+    """Remove <think>...</think> reasoning blocks from DeepSeek-R1 output."""
+    import re
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
 def get_open_model_response(prompt: str, model_name: str, system_prompt: str, pydantic_object_structured_output: type[BaseModel]):
     client = setup_academic_client()
-    if pydantic_object_structured_output:
+    is_thinking_model = model_name in THINKING_MODELS
+
+    if pydantic_object_structured_output and not is_thinking_model:
         try:
             chat_completion = client.responses.parse(
                 model=model_name,
@@ -92,7 +103,25 @@ def get_open_model_response(prompt: str, model_name: str, system_prompt: str, py
                       {"role": "user", "content": prompt}],
             model=model_name,
         )
-        return chat_completion.choices[0].message.content
+        raw = chat_completion.choices[0].message.content
+        if is_thinking_model and pydantic_object_structured_output:
+            raw = _strip_thinking_tokens(raw)
+            try:
+                output_parser = JsonOutputParser(pydantic_object=pydantic_object_structured_output)
+                parsed = output_parser.parse(raw)
+                if isinstance(parsed, dict):
+                    return pydantic_object_structured_output(**parsed)
+                elif isinstance(parsed, list) and pydantic_object_structured_output == ExtractedTriplets:
+                    capitalized_parsed = [
+                        {k.capitalize(): v for k, v in d.items()}
+                        for d in parsed
+                    ]
+                    better_parsed = [ValidTriplet(**parsed_element) for parsed_element in capitalized_parsed]
+                    return ExtractedTriplets(extracted_triplets=better_parsed)
+            except Exception as e:
+                logger.error(f"Error parsing thinking model response: {str(e)}")
+                return None
+        return raw
 
 def get_llm_model_response(prompt: str, model_name: str, system_prompt: str = "", pydantic_object_structured_output: type[BaseModel] = None) -> Union[str, type[BaseModel]]:
     if model_name in OPENAI_API_MODELS:

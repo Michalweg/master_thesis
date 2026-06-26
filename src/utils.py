@@ -14,8 +14,21 @@ from io import StringIO
 from docling.datamodel.base_models import InputFormat
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
+from transformers import AutoTokenizer
+
 
 from src.logger import logger
+
+HF_MODELS = {
+    "llama-3.3-70b-instruct": "meta-llama/Llama-3.3-70B-Instruct",
+    "deepseek-r1-distill-llama-70b": "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+}
+
+TIKTOKEN_MODELS = {
+    "gpt-4o": "o200k_base",
+    "gpt-4": "cl100k_base",
+    "gpt3.5": "cl100k_base",
+}
 
 
 def extract_primary_numeric_value(value: str) -> str:
@@ -358,15 +371,15 @@ def read_json(json_file_path: Union[Path|str]) -> Union[dict | list[dict]]:
 
 
 def count_tokens_in_prompt(prompt: str, model_name: str) -> int:
-    model_encoding_dict = {
-        "gpt-4o": "o200k_base",
-        "gpt-4": "cl100k_base",
-        "gpt3.5": "cl100k_base",
-    }
-    if model_name not in model_encoding_dict:
-        raise KeyError(f"Provided model is not supported")
-    encoding = tiktoken.get_encoding(model_encoding_dict[model_name])
-    return len(encoding.encode(prompt))
+    if model_name in HF_MODELS:
+        tokenizer = AutoTokenizer.from_pretrained(HF_MODELS[model_name])
+        return len(tokenizer.encode(prompt))
+
+    if model_name in TIKTOKEN_MODELS:
+        encoding = tiktoken.get_encoding(TIKTOKEN_MODELS[model_name])
+        return len(encoding.encode(prompt))
+
+    raise KeyError(f"Provided model '{model_name}' is not supported")
 
 
 def get_unique_values_with_the_same_order(data: list) -> list:
