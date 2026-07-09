@@ -9,15 +9,17 @@ from prompts.tdmr_extraction_with_table_selection import (
     PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_PROMPT_TEMPLATE,
     PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT,
     PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT_GPT_4_TURBO,
+    PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT_THINKING_MODEL,
 )
 from prompts.tdmr_extraction_without_model import (
     TDMR_EXTRACTION_PROMPT_07_02_no_format_instructions_prompt,
     TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value,
     TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value_GPT4_turbo,
+    TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value_THINKING_MODEL,
 )
 
 from src.logger import logger
-from src.openai_client import get_openai_model_response, get_llm_model_response
+from src.openai_client import get_openai_model_response, get_llm_model_response, THINKING_MODELS
 
 from src.tdmr_extraction_utils.utils import (
     create_one_result_file,
@@ -41,11 +43,13 @@ MODEL_NAME = "openai-gpt-oss-120b"
 SYSTEM_PROMPT_RESULTS_EXTRACTION_MODEL_MAPPER = {
     "gpt-4-turbo": TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value_GPT4_turbo,
     "openai-gpt-oss-120b": TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value,
+    **{model: TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value_THINKING_MODEL for model in THINKING_MODELS},
 }
 
 SYSTEM_PROMPT_PICKING_UP_TABLEMODEL_MAPPER = {
     "gpt-4-turbo": PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT_GPT_4_TURBO,
     "openai-gpt-oss-120b": PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT,
+    **{model: PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT_THINKING_MODEL for model in THINKING_MODELS},
 }
 
 
@@ -56,6 +60,7 @@ def extract_result_from_given_table_for_triplet(
     prompt_template: str,
     result_object: TdmrExtractionResponseSplit,
     structured_output: bool = True,
+    model_name: str = MODEL_NAME,
 ) -> dict:
     if structured_output:
         prompt = PromptTemplate(
@@ -70,7 +75,7 @@ def extract_result_from_given_table_for_triplet(
             prompt=prompt,
             pydantic_object_structured_output=result_object,
             system_prompt=system_prompt,
-            model_name=MODEL_NAME,
+            model_name=model_name,
         )
 
         if isinstance(response, dict):
@@ -125,6 +130,7 @@ def main(
     extracted_triplet_path_dir,
     extracted_tables_dict_object: list[dict],
     tdmr_extraction_dir,
+    model_name: str = MODEL_NAME,
 ):
     output_list = []
 
@@ -148,7 +154,9 @@ def main(
                     )
                     try:
                         system_prompt_per_model_picking_up_table = (
-                            SYSTEM_PROMPT_PICKING_UP_TABLEMODEL_MAPPER[MODEL_NAME]
+                            SYSTEM_PROMPT_PICKING_UP_TABLEMODEL_MAPPER.get(
+                                model_name, PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_SYSTEM_PROMPT
+                            )
                         )
                         table_id_to_use = pick_optimal_source_table_for_given_triplet(
                             extracted_triplet=triplet,
@@ -156,7 +164,7 @@ def main(
                             prompt_template=PICK_OPTIMAL_TABLE_WITHOUT_ADDITIONAL_CONTEXT_PROMPT_TEMPLATE,
                             result_object=TableDecisionResponse,
                             system_prompt=system_prompt_per_model_picking_up_table,
-                            model_name=MODEL_NAME,
+                            model_name=model_name,
                         )["table_id_to_extract_result_metric_from"]
                         table_dict = [
                             prepared_table_dict
@@ -169,7 +177,9 @@ def main(
                         )
                         continue
                     system_prompt_per_model_result_extraction = (
-                        SYSTEM_PROMPT_RESULTS_EXTRACTION_MODEL_MAPPER[MODEL_NAME]
+                        SYSTEM_PROMPT_RESULTS_EXTRACTION_MODEL_MAPPER.get(
+                            model_name, TDMR_EXTRACTION_PROMPT_05_07_system_prompt_with_selecting_value
+                        )
                     )
                     response = extract_result_from_given_table_for_triplet(
                         triplet,
@@ -178,6 +188,7 @@ def main(
                         system_prompt=system_prompt_per_model_result_extraction,
                         prompt_template=TDMR_EXTRACTION_PROMPT_07_02_no_format_instructions_prompt,
                         result_object=TdmrExtractionResponseSplit,
+                        model_name=model_name,
                     )
                     if response:
                         output_list.append(response)

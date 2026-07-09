@@ -7,6 +7,7 @@ This pipeline combines three main steps:
 3. TDMR Extraction - Extract results from tables using normalized triplets
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -57,11 +58,103 @@ load_dotenv()
 # STEP 1: PROMPT EXTRACTION
 # ============================================================================
 
+def _make_chunks(text: str, chunk_size: int, overlap_ratio: float) -> list[str]:
+    """Split text into overlapping chunks."""
+    step = max(1, int(chunk_size * (1.0 - overlap_ratio)))
+    return [text[i: i + chunk_size] for i in range(0, len(text), step)]
+
+
+def _resolve_paper_markdown(paper_path: Path) -> Optional[tuple[str, Path]]:
+    """Handle both direct .md files and directories containing .md files."""
+    if paper_path.is_dir():
+        paper_name = paper_path.name
+        markdown_file_candidates = list(paper_path.glob("*.md"))
+        if not markdown_file_candidates:
+            logger.warning(f"No markdown file found in directory {paper_name}")
+            return None
+        return paper_name, markdown_file_candidates[0]
+    elif paper_path.suffix == ".md":
+        return paper_path.stem, paper_path
+    return None
+
+
+def _extract_one_paper(
+    paper_path: Path,
+    output_dir: Path,
+    model_name: str,
+    chunk_size: int,
+    chunk_overlap_ratio: float,
+) -> None:
+    """
+    Extract triplets for a single paper and save to its own file. Designed to run
+    in a thread — each paper writes to its own directory, so there is no shared
+    mutable state.
+    """
+    resolved = _resolve_paper_markdown(paper_path)
+    if resolved is None:
+        return
+    paper_name, markdown_file_path = resolved
+
+    logger.info(f"Processing paper: {paper_name}")
+
+    paper_output_dir = output_dir / paper_name
+    create_dir_if_not_exists(paper_output_dir)
+
+    unique_triplets_path = paper_output_dir / "unique_triplets.json"
+    if unique_triplets_path.exists():
+        logger.info(f"Paper {paper_name} already processed, skipping...")
+        return
+
+    file_content = read_markdown_file_content(markdown_file_path)
+    if not file_content:
+        logger.warning(f"Empty content in {markdown_file_path}")
+        return
+
+    valid_jsons_list = []
+    chunks = _make_chunks(file_content, chunk_size, chunk_overlap_ratio)
+
+    for idx, chunk in enumerate(chunks):
+        logger.info(f"Processing chunk {idx + 1}/{len(chunks)} for {paper_name}")
+
+        try:
+            user_prompt = openai_gpt_oss_120b_user_prompt.format(
+                research_paper=chunk
+            )
+
+            response = get_llm_model_response(
+                prompt=user_prompt,
+                pydantic_object_structured_output=ExtractedTriplets,
+                system_prompt=openai_gpt_oss_120b_system_prompt,
+                model_name=model_name,
+            )
+
+            if isinstance(response, ExtractedTriplets):
+                for triplet in response.extracted_triplets:
+                    valid_jsons_list.append(triplet.model_dump())
+            elif isinstance(response, dict) and "extracted_triplets" in response:
+                valid_jsons_list.extend(response["extracted_triplets"])
+
+        except Exception as e:
+            logger.error(f"Error processing chunk {idx} for {paper_name}: {str(e)}")
+            continue
+
+    # Remove duplicates and save
+    unique_triplets = list({
+        tuple(sorted(d.items())) for d in valid_jsons_list
+    })
+    unique_triplets = [dict(t) for t in unique_triplets]
+
+    save_dict_to_json(unique_triplets, unique_triplets_path)
+    logger.info(f"Extracted {len(unique_triplets)} unique triplets for {paper_name}")
+
+
 def extract_prompts_from_markdown(
     markdown_files_dir: Path,
     output_dir: Path,
     model_name: str = "openai-gpt-oss-120b",
     chunk_size: int = 5000,
+    chunk_overlap_ratio: float = 0.15,
+    max_workers: int = 1,
 ) -> Path:
     """
     Extract triplets from markdown files using chunk-based approach.
@@ -71,6 +164,9 @@ def extract_prompts_from_markdown(
         output_dir: Directory to save extracted triplets
         model_name: LLM model name to use
         chunk_size: Size of text chunks to process
+        chunk_overlap_ratio: Fraction of chunk_size to overlap between consecutive chunks
+        max_workers: Parallel papers processed at once (peak API concurrency == max_workers).
+                     Default of 1 preserves the historical fully-sequential behaviour.
 
     Returns:
         Path to the output directory with extracted triplets
@@ -81,83 +177,26 @@ def extract_prompts_from_markdown(
 
     create_dir_if_not_exists(output_dir)
 
-    # Iterate through all markdown files/papers
-    for paper_path in tqdm(list(markdown_files_dir.iterdir()), desc="Extracting triplets"):
-        # Handle both direct .md files and directories containing .md files
-        if paper_path.is_dir():
-            paper_name = paper_path.name
-            # Find markdown file in subdirectory
-            markdown_file_candidates = list(paper_path.glob("*.md"))
-            if not markdown_file_candidates:
-                logger.warning(f"No markdown file found in directory {paper_name}")
-                continue
-            markdown_file_path = markdown_file_candidates[0]
-        elif paper_path.suffix == ".md":
-            # Direct markdown file
-            paper_name = paper_path.stem
-            markdown_file_path = paper_path
-        else:
-            # Skip non-markdown files and non-directories
-            continue
+    papers = list(markdown_files_dir.iterdir())
 
-        logger.info(f"Processing paper: {paper_name}")
-
-        # Create output directory for this paper
-        paper_output_dir = output_dir / paper_name
-        create_dir_if_not_exists(paper_output_dir)
-
-        # Check if already processed
-        unique_triplets_path = paper_output_dir / "unique_triplets.json"
-        if unique_triplets_path.exists():
-            logger.info(f"Paper {paper_name} already processed, skipping...")
-            continue
-
-        # Read markdown content
-        file_content = read_markdown_file_content(markdown_file_path)
-        if not file_content:
-            logger.warning(f"Empty content in {markdown_file_path}")
-            continue
-
-        # Process in chunks
-        valid_jsons_list = []
-        chunks = [
-            file_content[i : i + chunk_size]
-            for i in range(0, len(file_content), chunk_size)
-        ]
-
-        for idx, chunk in enumerate(chunks):
-            logger.info(f"Processing chunk {idx + 1}/{len(chunks)} for {paper_name}")
-
-            try:
-                user_prompt = openai_gpt_oss_120b_user_prompt.format(
-                    research_paper=chunk
-                )
-
-                response = get_llm_model_response(
-                    prompt=user_prompt,
-                    pydantic_object_structured_output=ExtractedTriplets,
-                    system_prompt=openai_gpt_oss_120b_system_prompt,
-                    model_name=model_name,
-                )
-
-                if isinstance(response, ExtractedTriplets):
-                    for triplet in response.extracted_triplets:
-                        valid_jsons_list.append(triplet.model_dump())
-                elif isinstance(response, dict) and "extracted_triplets" in response:
-                    valid_jsons_list.extend(response["extracted_triplets"])
-
-            except Exception as e:
-                logger.error(f"Error processing chunk {idx} for {paper_name}: {str(e)}")
-                continue
-
-        # Remove duplicates and save
-        unique_triplets = list({
-            tuple(sorted(d.items())) for d in valid_jsons_list
-        })
-        unique_triplets = [dict(t) for t in unique_triplets]
-
-        save_dict_to_json(unique_triplets, unique_triplets_path)
-        logger.info(f"Extracted {len(unique_triplets)} unique triplets for {paper_name}")
+    if max_workers <= 1:
+        for paper_path in tqdm(papers, desc="Extracting triplets"):
+            _extract_one_paper(paper_path, output_dir, model_name, chunk_size, chunk_overlap_ratio)
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    _extract_one_paper, paper_path, output_dir, model_name,
+                    chunk_size, chunk_overlap_ratio,
+                ): paper_path.name
+                for paper_path in papers
+            }
+            for future in tqdm(as_completed(futures), total=len(futures), desc="Extracting triplets"):
+                paper_name = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.error(f"Paper {paper_name} failed: {e}")
 
     # Unify triplets for each paper to remove any remaining duplicates
     logger.info("Unifying extracted triplets to remove duplicates...")
@@ -201,6 +240,7 @@ def normalize_extracted_prompts(
     output_dir: Path,
     model_name: str = "openai-gpt-oss-120b",
     keys_to_normalize: Optional[set] = None,
+    max_workers: int = 1,
 ) -> Path:
     """
     Normalize extracted triplets against reference dataset.
@@ -211,6 +251,7 @@ def normalize_extracted_prompts(
         output_dir: Directory to save normalized triplets
         model_name: LLM model name to use
         keys_to_normalize: Set of keys to normalize (e.g., {"Metric", "Dataset"})
+        max_workers: Parallel papers normalized at once (see triplets_normalization.main)
 
     Returns:
         Path to the output directory with normalized triplets
@@ -250,6 +291,8 @@ def normalize_extracted_prompts(
             true_dataset_path=str(true_dataset_path),
             output_dir_path=str(output_dir),
             keys_to_normalize=keys_to_normalize,
+            max_workers=max_workers,
+            model_name=model_name,
         )
     else:
         logger.info("All papers already normalized, skipping normalization step")
@@ -381,6 +424,7 @@ def extract_tdmr_results(
                 extracted_triplet_path_dir=str(normalized_paper_path),
                 extracted_tables_dict_object=extracted_tables_with_captions,
                 tdmr_extraction_dir=str(paper_output_dir),
+                model_name=model_name,
             )
 
         except Exception as e:
@@ -457,7 +501,10 @@ def run_complete_pipeline(
     model_name: str = "openai-gpt-oss-120b",
     keys_to_normalize: Optional[set] = None,
     chunk_size: int = 5000,
+    chunk_overlap_ratio: float = 0.15,
     resume_from_dir: Optional[str] = None,
+    extraction_max_workers: int = 1,
+    normalization_max_workers: int = 1,
 ):
     """
     Run the complete TDMR extraction pipeline.
@@ -471,8 +518,12 @@ def run_complete_pipeline(
         model_name: LLM model name to use
         keys_to_normalize: Set of keys to normalize (default: {"Metric", "Dataset"})
         chunk_size: Size of text chunks for extraction (default: 5000)
+        chunk_overlap_ratio: Overlap between consecutive chunks as fraction of chunk_size (default: 0.15)
         resume_from_dir: Optional directory name to resume from (e.g., "26_12_2025").
                         If provided, the pipeline will resume from this directory
+        extraction_max_workers: Parallel papers processed at once in Step 1 (default: 1,
+                        i.e. fully sequential — matches historical behaviour)
+        normalization_max_workers: Parallel papers processed at once in Step 2 (default: 1)
     """
     # Determine output directory
     if resume_from_dir:
@@ -619,6 +670,8 @@ def run_complete_pipeline(
                 output_dir=extraction_output_dir,
                 model_name=model_name,
                 chunk_size=chunk_size,
+                chunk_overlap_ratio=chunk_overlap_ratio,
+                max_workers=extraction_max_workers,
             )
 
         # Step 2: Normalize extracted triplets
@@ -633,6 +686,7 @@ def run_complete_pipeline(
                 output_dir=normalization_output_dir,
                 model_name=model_name,
                 keys_to_normalize=keys_to_normalize,
+                max_workers=normalization_max_workers,
             )
 
         # Step 3: Extract TDMR results
@@ -668,15 +722,52 @@ def run_complete_pipeline(
 
 
 if __name__ == "__main__":
-    CONFIG = {
-        "pdf_files_dir": "leaderboard-generation-papers",
-        "markdown_files_dir": "leaderboard-generation-papers/markdowns",
-        "true_dataset_path": "leaderboard-generation/tdm_annotations.json",
-        "base_output_dir": "pipeline_results",
-        "model_name": "deepseek-r1-distill-llama-70b",
-        "keys_to_normalize": {"Metric", "Dataset", "Task"},
-        "chunk_size": 5000,
-        "resume_from_dir": "",
-    }
+    BASE_OUTPUT_DIR = "pipeline_results"
+    # chunk_size=10000 / overlap=0.15 was picked as the best config from the
+    # ablation sweep (see ablation_chunk_size/ablation_results_with_task.json).
+    # Already have results for this one from a prior run:
+    ALREADY_DONE_MODELS = {"openai-gpt-oss-120b"}
+    # Every other model already has a pipeline_results/<model_name>/ folder from
+    # earlier (chunk_size=5000) runs — reusing "06_07_2026" as resume_from_dir
+    # keeps this new chunk_size=10000 sweep in a directory none of them have yet,
+    # so it can never silently resume from that stale chunk_size=5000 output.
+    RESUME_FROM_DIR = "06_07_2026"
 
-    run_complete_pipeline(**CONFIG)
+    model_names = sorted(
+        p.name for p in Path(BASE_OUTPUT_DIR).iterdir()
+        if p.is_dir() and p.name not in ALREADY_DONE_MODELS
+    )
+    logger.info(f"Models queued for the chunk_size=10000 sweep: {model_names}")
+
+    for model_name in model_names:
+        CONFIG = {
+            "pdf_files_dir": "leaderboard-generation-papers",
+            "markdown_files_dir": "leaderboard-generation-papers/markdowns",
+            "true_dataset_path": "leaderboard-generation/tdm_annotations.json",
+            "base_output_dir": BASE_OUTPUT_DIR,
+            "model_name": model_name,
+            "keys_to_normalize": {"Metric", "Dataset", "Task"},
+            "chunk_size": 10000,
+            "chunk_overlap_ratio": 0.15,
+            "resume_from_dir": RESUME_FROM_DIR,
+            "extraction_max_workers":2,
+            "normalization_max_workers": 2,
+        }
+
+        logger.info("#" * 80)
+        logger.info(f"STARTING PIPELINE FOR MODEL: {model_name}")
+        logger.info("#" * 80)
+
+        # resume_from_dir requires the directory to already exist (it's meant to
+        # guard against typos when resuming a real prior run) — create it up front
+        # since here we're deliberately pinning a fixed, fresh directory name.
+        create_dir_if_not_exists(Path(BASE_OUTPUT_DIR) / model_name / RESUME_FROM_DIR)
+
+        try:
+            run_complete_pipeline(**CONFIG)
+        except Exception as e:
+            logger.error(f"Pipeline failed for model {model_name}: {e}")
+            logger.error(f"Continuing with the next model...")
+            continue
+
+    logger.info("All queued models processed.")

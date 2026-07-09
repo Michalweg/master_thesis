@@ -1,24 +1,29 @@
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from langchain.prompts import PromptTemplate
 from tqdm import tqdm
 
-from src.openai_client import get_llm_model_response
+from src.openai_client import get_llm_model_response, THINKING_MODELS
 from src.triplets.triplets_unification import (
     extract_unique_triplets_from_normalized_triplet_file, normalize_string,
     normalize_strings_triplets)
 from src.utils import create_dir_if_not_exists, read_json, save_dict_to_json
-from src.const import BENCHMARK_TABLES, TASK_NAME
-from prompts.triplets_normalization import normalization_user_prompt, normalization_system_prompt, normalization_system_prompt_gpt_4_tubo
+from src.const import BENCHMARK_TABLES
+from prompts.triplets_normalization import (
+    normalization_user_prompt,
+    normalization_system_prompt,
+    normalization_system_prompt_gpt_4_tubo,
+    normalization_system_prompt_thinking_model,
+)
 from pydantic import BaseModel, Field
 import json
 
-NORMALIZED_TRIPLET_PART = {"Task": TASK_NAME}
-
 MODEL_NAME = "openai-gpt-oss-120b"
 triplets_normalization_model_mapper = {"gpt-4-turbo": normalization_system_prompt_gpt_4_tubo,
-                                       "openai-gpt-oss-120b": normalization_system_prompt}
+                                       "openai-gpt-oss-120b": normalization_system_prompt,
+                                       **{model: normalization_system_prompt_thinking_model for model in THINKING_MODELS}}
 from src.logger import logger
 
 class NormalizationOutput(BaseModel):
@@ -64,9 +69,92 @@ def create_labels_dict(true_dataset: dict) -> dict:
     return labels_dict
 
 
+def _normalize_one_paper(
+    paper_name: str,
+    extracted_triplets_per_paper: list[dict],
+    output_dir_path: str,
+    keys_to_normalize: set,
+    labels_dict: dict,
+    model_name: str,
+) -> list[dict]:
+    """
+    Normalize every triplet for a single paper and persist the per-paper output.
+    Designed to run in a thread — each paper writes to its own file, so there is
+    no shared mutable state.
+    """
+    cached_path = Path(output_dir_path) / paper_name / f"{paper_name}.json"
+    if cached_path.exists():
+        logger.info(f"The analyzed file was already processed: {paper_name}")
+        return read_json(cached_path)
+
+    print(f"Analyzed paper name: {paper_name}")
+    output_paper_path = os.path.join(output_dir_path, paper_name)
+    create_dir_if_not_exists(Path(output_paper_path))
+
+    normalized_triplets_per_paper = []
+    model_system_prompt = triplets_normalization_model_mapper.get(model_name, normalization_system_prompt)
+
+    for extracted_triplet in extracted_triplets_per_paper:
+
+        normalized_triplet = {k: v for k, v in extracted_triplet.items() if k not in keys_to_normalize}
+        for triplet_item in keys_to_normalize:
+            try:
+                user_prompt = PromptTemplate.from_template(normalization_user_prompt).format(
+                    data_item=extracted_triplet[triplet_item],
+                    defined_list=labels_dict[triplet_item.capitalize()],
+                )
+                response = get_llm_model_response(prompt=user_prompt, model_name=model_name, system_prompt=model_system_prompt,
+                                                  pydantic_object_structured_output=NormalizationOutput)
+                if isinstance(response, NormalizationOutput):
+                    response = response.output_data_item
+                elif isinstance(response, dict):
+                    response = response["output_data_item"]
+
+                if response:
+                    if response.lower() != "None".lower():
+                        logger.info(f"Provided data item: {extracted_triplet[triplet_item]} output: {response}")
+                        response = normalize_string(response)
+                        normalized_triplet[triplet_item.capitalize()] = response
+
+                    else:
+                        logger.warning(
+                            f"Model could not find the match for the {extracted_triplet[triplet_item]} within {labels_dict[triplet_item]}"
+                            f" for paper {paper_name} and triplet: {extracted_triplet}"
+                        )
+                        logger.warning(response)
+
+
+            except Exception as e:
+                logger.error(
+                    f"Here is the exception: {e} for the {paper_name} and for {triplet_item} "
+                    f"extracted_triplet: {extracted_triplet} and labels_dict: {labels_dict}"
+                )
+                normalized_triplet = extracted_triplet
+
+        if len(normalized_triplet) == 3:
+            normalized_triplets_per_paper.append(normalized_triplet)
+        else:
+            logger.error(f"The normalized triplet is broken: {normalized_triplet}, original triplet: {extracted_triplet}")
+
+    save_dict_to_json(
+        normalized_triplets_per_paper,
+        Path(os.path.join(output_paper_path, paper_name + ".json")),
+    )
+
+    return normalized_triplets_per_paper
+
+
 def main(
     path_to_extracted_triplets: str, true_dataset_path: str, output_dir_path: str, keys_to_normalize: set = {"Task", "Dataset", "Metric"},
+    max_workers: int = 1,
+    model_name: str = MODEL_NAME,
 ) -> list[dict]:
+    """
+    max_workers controls how many papers are normalized simultaneously. Each worker
+    sends its triplets' LLM calls sequentially, so peak concurrency == max_workers.
+    Keep the default at 1 to preserve historical (fully sequential) behaviour for
+    existing callers; pass a higher value to speed up large re-normalization runs.
+    """
     all_extracted_triplets_per_paper = combine_extracted_triplets_dir_into_file(
         path_to_extracted_triplets
     )  # read_json(Path(os.path.join(path_to_extracted_triplets, "unique_triplets.json")))
@@ -75,69 +163,30 @@ def main(
     labels_dict = create_labels_dict(true_dataset)
     normalized_triplets = []
 
-    already_processed_paper_names = [x.name for x in Path(output_dir_path).iterdir()]
-    for paper_name in tqdm(all_extracted_triplets_per_paper):
+    if max_workers <= 1:
+        for paper_name in tqdm(all_extracted_triplets_per_paper):
+            normalized_triplets.extend(
+                _normalize_one_paper(
+                    paper_name, all_extracted_triplets_per_paper[paper_name],
+                    output_dir_path, keys_to_normalize, labels_dict, model_name,
+                )
+            )
+        return normalized_triplets
 
-        if paper_name in already_processed_paper_names:
-            logger.info(f"The analyzed file was already processed: {paper_name}")
-            continue
-
-        print(f"Analyzed paper name: {paper_name}")
-        output_paper_path = os.path.join(output_dir_path, paper_name)
-        create_dir_if_not_exists(Path(output_paper_path))
-
-        normalized_triplets_per_paper = []
-        extracted_triplets_per_paper = all_extracted_triplets_per_paper[paper_name]
-
-        model_system_prompt = triplets_normalization_model_mapper[MODEL_NAME]
-
-        for extracted_triplet in extracted_triplets_per_paper:
-
-            normalized_triplet = {k: NORMALIZED_TRIPLET_PART[k] for k, v in extracted_triplet.items() if k not in keys_to_normalize}
-            for triplet_item in keys_to_normalize:
-                try:
-                    user_prompt = PromptTemplate.from_template(normalization_user_prompt).format(
-                        data_item=extracted_triplet[triplet_item],
-                        defined_list=labels_dict[triplet_item.capitalize()],
-                    )
-                    response = get_llm_model_response(prompt=user_prompt, model_name=MODEL_NAME, system_prompt=model_system_prompt,
-                                                      pydantic_object_structured_output=NormalizationOutput)
-                    if isinstance(response, NormalizationOutput):
-                        response = response.output_data_item
-                    elif isinstance(response, dict):
-                        response = response["output_data_item"]
-
-                    if response:
-                        if response.lower() != "None".lower():
-                            logger.info(f"Provided data item: {extracted_triplet[triplet_item]} output: {response}")
-                            response = normalize_string(response)
-                            normalized_triplet[triplet_item.capitalize()] = response
-
-                        else:
-                            logger.warning(
-                                f"Model could not find the match for the {extracted_triplet[triplet_item]} within {labels_dict[triplet_item]}"
-                                f" for paper {paper_name} and triplet: {extracted_triplet}"
-                            )
-                            logger.warning(response)
-
-
-                except Exception as e:
-                    logger.error(
-                        f"Here is the exception: {e} for the {paper_name} and for {triplet_item} "
-                        f"extracted_triplet: {extracted_triplet} and labels_dict: {labels_dict}"
-                    )
-                    normalized_triplet = extracted_triplet
-
-            if len(normalized_triplet) == 3:
-                normalized_triplets_per_paper.append(normalized_triplet)
-                normalized_triplets.append(normalized_triplet)
-            else:
-                logger.error(f"The normalized triplet is broken: {normalized_triplet}, original triplet: {extracted_triplet}")
-
-        save_dict_to_json(
-            normalized_triplets_per_paper,
-            Path(os.path.join(output_paper_path, paper_name + ".json")),
-        )
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                _normalize_one_paper, paper_name, extracted_triplets_per_paper,
+                output_dir_path, keys_to_normalize, labels_dict, model_name,
+            ): paper_name
+            for paper_name, extracted_triplets_per_paper in all_extracted_triplets_per_paper.items()
+        }
+        for future in tqdm(as_completed(futures), total=len(futures), desc="step2 normalization"):
+            paper_name = futures[future]
+            try:
+                normalized_triplets.extend(future.result())
+            except Exception as e:
+                logger.error(f"Paper {paper_name} failed: {e}")
 
     return normalized_triplets
 
@@ -159,9 +208,14 @@ def calculate_exact_match_on_extracted_triplets(gold_data, normalized_output):
     for paper in normalized_output:
         exact_matches = 0
         matches_within_list_of_extracted_values = 0
-        # unique_output_tdms = [dict(t) for t in {tuple(d.items()) for d in output_tdms[paper]}]
-        # for output_tdm in unique_output_tdms:
-        for output_tdm in normalized_output[paper]['normalized_output']:
+        # Dedup: after normalization, distinct raw extractions (e.g. "NER" and
+        # "Named Entity Recognition") often collapse onto the same canonical
+        # (Task, Dataset, Metric) triple. Counting every duplicate as a separate
+        # match against the same gold row inflates recall past 1.0.
+        unique_output_tdms = [
+            dict(t) for t in {tuple(sorted(d.items())) for d in normalized_output[paper]['normalized_output']}
+        ]
+        for output_tdm in unique_output_tdms:
             found = False
             for gold_tdm in gold_data[paper]['TDMs']:
                 try:
@@ -183,9 +237,9 @@ def calculate_exact_match_on_extracted_triplets(gold_data, normalized_output):
         except KeyError:
             recall_scores[paper] = 0.0
             recall_scores_given_list[paper] = 0.0
-        if len(normalized_output[paper]['normalized_output']) != 0:
-            precision_scores[paper] = exact_matches / len(normalized_output[paper]['normalized_output'])
-            precision_scores_given_list[paper] = matches_within_list_of_extracted_values / len(normalized_output[paper]['normalized_output'])
+        if len(unique_output_tdms) != 0:
+            precision_scores[paper] = exact_matches / len(unique_output_tdms)
+            precision_scores_given_list[paper] = matches_within_list_of_extracted_values / len(unique_output_tdms)
         else:
             precision_scores[paper] = 0
             precision_scores_given_list[paper] = 0

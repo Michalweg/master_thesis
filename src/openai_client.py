@@ -2,9 +2,11 @@
 In this file the openai client code is put and also extraction of triplets from entire FILE.
 """
 
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+import openai
 from openai import OpenAI
 from openai.types.beta.threads.message_create_params import (
     Attachment, AttachmentToolFileSearch)
@@ -58,6 +60,36 @@ class ExtractedTriplets(BaseModel):
     extracted_triplets: list[ValidTriplet] = Field(description="List of complete, containing all fields triplets containing data regarding machine learning experiments from the given part of a research paper. ")
 
 
+RETRYABLE_ERRORS = (
+    openai.RateLimitError,       # 429
+    openai.InternalServerError,  # 5xx — transient, worth retrying
+    openai.APIConnectionError,   # network hiccup / timeout
+)
+
+
+def _call_with_retry(fn, *args, max_retries: int = 5, base_wait: float = 5.0, **kwargs):
+    """
+    Call fn(*args, **kwargs) with exponential backoff on transient errors
+    (rate limits, 5xx server errors, connection hiccups).
+
+    Waits: 5s, 10s, 20s, 40s, 80s between attempts (doubles each time).
+    Raises the original exception after max_retries failed attempts.
+    """
+    for attempt in range(max_retries):
+        try:
+            return fn(*args, **kwargs)
+        except RETRYABLE_ERRORS as e:
+            if attempt == max_retries - 1:
+                logger.error(f"{type(e).__name__}: all {max_retries} retries exhausted. Giving up.")
+                raise
+            wait = base_wait * (2 ** attempt)
+            logger.warning(
+                f"{type(e).__name__} hit (attempt {attempt + 1}/{max_retries}), "
+                f"retrying in {wait:.0f}s..."
+            )
+            time.sleep(wait)
+
+
 def setup_academic_client():
     api_key = os.getenv("ACADEMIC_API_KEY") # Replace with your API key
     base_url = "https://chat-ai.academiccloud.de/v1"
@@ -79,7 +111,8 @@ def get_open_model_response(prompt: str, model_name: str, system_prompt: str, py
 
     if pydantic_object_structured_output and not is_thinking_model:
         try:
-            chat_completion = client.responses.parse(
+            chat_completion = _call_with_retry(
+                client.responses.parse,
                 model=model_name,
                 input=[
                     {
@@ -98,7 +131,8 @@ def get_open_model_response(prompt: str, model_name: str, system_prompt: str, py
         except Exception as e:
             logger.error(f"Error occurred: {str(e)}, skipping this triplet")
     else:
-        chat_completion = client.chat.completions.create(
+        chat_completion = _call_with_retry(
+            client.chat.completions.create,
             messages=[{"role": "system", "content": system_prompt if system_prompt else "You are a helpful assistant"},
                       {"role": "user", "content": prompt}],
             model=model_name,
@@ -149,8 +183,8 @@ def get_openai_model_response(
         print(f"The prompt you are about to send is too large: {no_of_token_in_prompt}")
         raise ValueError
     try:
-        # Send a request to the GPT-4 model
-        response = client.chat.completions.create(
+        response = _call_with_retry(
+            client.chat.completions.create,
             model=model_name,
             messages=[
                 {
@@ -160,13 +194,12 @@ def get_openai_model_response(
                         if not system_prompt
                         else system_prompt
                     ),
-                },  # System message to set behavior
-                {"role": "user", "content": prompt},  # User's prompt
+                },
+                {"role": "user", "content": prompt},
             ],
-            temperature=0,  # Adjust for creativity (0 = deterministic, 1 = very creative)
-            max_tokens=1000,  # Adjust for the length of the response
+            temperature=0,
+            max_tokens=1000,
         )
-        # Extract the content of the assistant's reply
         return response.choices[0].message.content
     except Exception as e:
         return f"An error occurred: {e}"
@@ -182,7 +215,8 @@ def get_openai_model_structured_response(
         )
         raise TooManyTokensError(token_count=no_of_token_in_prompt, max_allowed=MAXIMUM_MO_TOKENS_PER_PROMPT)
     try:
-        response = client.responses.parse(
+        response = _call_with_retry(
+            client.responses.parse,
             model=model_name,
             input=[
                 {
